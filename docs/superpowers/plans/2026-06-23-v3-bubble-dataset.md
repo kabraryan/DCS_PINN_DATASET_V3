@@ -83,7 +83,7 @@ Expected: `no tests ran` (empty test files don't exist yet — that's fine)
 - [ ] **Step 4: Install dependencies**
 
 ```bash
-pip install numpy pandas matplotlib tqdm scipy scikit-learn joblib
+pip install numpy pandas matplotlib tqdm scipy scikit-learn
 ```
 
 - [ ] **Step 5: Commit scaffold**
@@ -1517,7 +1517,7 @@ print('bubble_R_max range:', round(df.bubble_R_max.min(), 3), round(df.bubble_R_
 ```bash
 git add generate_dcs_dataset_v3.py tests/ \
     dive_profiles_features.csv dive_profiles_timeseries.npy \
-    dive_profiles_sample.png bubble_scaler.pkl
+    dive_profiles_sample.png bubble_scaler.json
 git commit -m "feat: complete V3 dataset — EP bubble dynamics, 47 columns, all checks pass"
 ```
 

@@ -549,7 +549,9 @@ coefficients are unchanged; only the intercept is adjusted.
 ```
 ~/Desktop/DCS_PINN_DATASET_V3/
 ├── generate_dcs_dataset_v3.py      # single script — no training step required
-├── bubble_scaler.pkl               # StandardScaler for bubble feature normalisation
+├── bubble_scaler.json              # StandardScaler mean_/scale_ as JSON, never a pickle:
+│                                   # joblib.load on an untrusted pickle is arbitrary code
+│                                   # execution, and this is twelve floats.
 ├── dive_profiles_timeseries.npy    # (50000, 180) float32 — same format as V2
 ├── dive_profiles_features.csv      # 47 columns (41 V2 + 6 bubble)
 └── dive_profiles_sample.png        # 3×3 sample plot
@@ -649,7 +651,7 @@ matplotlib >= 3.4
 tqdm >= 4.60
 scipy >= 1.9          # solve_ivp with Radau
 scikit-learn >= 1.2   # StandardScaler
-joblib >= 1.2         # scaler serialisation
+# joblib intentionally NOT a dependency — the scaler is serialised as JSON, not pickle.
 ```
 
 No PyTorch, no DeepXDE, no GPU required.
