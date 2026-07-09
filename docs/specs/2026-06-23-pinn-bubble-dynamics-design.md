@@ -112,26 +112,99 @@ Forcing fitted coefficients to match a pre-decided literature ordering overrides
 with a prior. Since the corrected design pre-specifies bubble coefficients as part of the
 data-generating process, there is no fitting step to constrain; this machinery is moot.
 
-### Correction 9 — V2 logistic reconstructed from source; three documentation errors noted
+### Correction 9 — V2 logistic reconstructed from source; two documentation errors noted
 
-The V2 reference document states slope = 9.0 / intercept = −7.5. Recovery from
-`generate_dcs_dataset_v2.py` source and regression on `logit(dcs_probability)` against
-`physics_risk_score` reveals three discrepancies:
+> **Retraction (2026-07-09).** An earlier revision of this section made two false claims.
+> It asserted that "the README reports 905 profiles at `physics_risk_score = 1.0`" and
+> counted that as a third documentation error. The README
+> (`code/synthetic_generator/README.md:111`) reports **490**, which is exactly what the
+> shipped CSV contains — the README was correct all along. The figure 905 comes from
+> `DCS_Physics_Parameter_Reference.docx`, a separate and genuinely stale document. The
+> companion patch `DCS_V3_slope_edit_patch.md` compounded the error with a claimed CSV
+> count of 696, a number that appears in no file in this project. Both claims are
+> withdrawn; the corrected accounting is below. See §Provenance discipline.
 
-1. **Slope / intercept** in the running code are **18.31 / −18.08**, not 9.0 / −7.5.
+The V2 reference document (`DCS_Physics_Parameter_Reference.docx`) states slope = 9.0 /
+intercept = −7.5. Recovery from `generate_dcs_dataset_v2.py` source and regression on
+`logit(dcs_probability)` against `physics_risk_score` reveals two real discrepancies, both
+confined to that `.docx`:
+
+1. **Slope / intercept** in the running code (`generate_dcs_dataset_v2.py:556`) are
+   **18.31 / −18.08**, not 9.0 / −7.5.
 2. **Undocumented direct terms.** At fixed `physics_risk_score`, `dcs_probability` still
    varies with `fitness_level` (≈ −0.50 to +0.45 logit) and `hydration_status` (≈ 0.0 to
    +0.30 logit). The reference doc claims these operate exclusively through the physics
    (half-time modification). The source shows they appear in **both** the physics layer
-   (half-time multipliers) and the logistic model (direct log-odds terms) — they are
-   double-counted.
-3. **Summary stat drift.** The README reports 905 profiles at `physics_risk_score = 1.0`;
-   the current CSV contains 490. Other summary means drift slightly.
+   (half-time multipliers) and the logistic model (direct log-odds terms, added as V2's
+   "Fix 7" and "Fix 8") — they are double-counted.
+
+**Verified summary statistics** (recomputed from
+`FINAL DIVE/datasets/synthetic_v2/dive_profiles_features.csv`, 2026-07-09):
+
+| Statistic | Value | `README.md` | `.docx` |
+|-----------|-------|-------------|---------|
+| Rows | 50,000 | 50,000 ✓ | 50,000 ✓ |
+| `physics_risk_score` = 1.0 | **490** | 490 ✓ | 905 ✗ |
+| `physics_risk_score` ≥ 0.85 | **4,918** | 4,918 ✓ | — |
+| DCS positives | **2,948 (5.896%)** | 2,950 (5.90%) ≈ | — |
+| Mean `physics_risk_score` | **0.6758** | 0.676 ✓ | 0.675 ≈ |
+
+`README.md` is accurate. `DCS_Physics_Parameter_Reference.docx` is stale on both the
+logistic form and the M-value-breached count, and should be treated as superseded.
 
 **Action:** The V3 spec treats the source code (`generate_dcs_dataset_v2.py`) as
-authoritative for all V2 logistic terms. The reference document and README figures are
-acknowledged as outdated. The complete V2 logistic (as it runs) is given in §Extended
-Logistic Model below. V3's intercept recalibration operates on this reconstructed model.
+authoritative for all V2 logistic terms. The complete V2 logistic (as it runs) is given in
+§Extended Logistic Model below. V3's intercept recalibration operates on this reconstructed
+model.
+
+### Correction 10 — ZHL-16C compartment 16 `b` coefficient was wrong
+
+V2's `get_zhl16c_table()` gave compartment 16 (635 min half-time) a `b` coefficient of
+**0.8693**. That is compartment 7's value (54.3 min), copy-pasted. The correct Bühlmann
+value is **0.9653**; the `b` column rises monotonically toward 1.0 and this entry made it
+drop from 0.9602 back to 0.8693.
+
+Fixed in all three copies of `generate_dcs_dataset_v2.py` and in this plan's Task 5. V3's
+`get_zhl16c_table()` now asserts that `b` is strictly increasing and `a` strictly decreasing,
+so the class of error cannot recur silently.
+
+**The shipped V2 dataset was generated with the wrong value** and therefore no longer
+reproduces from the corrected source. The impact was measured, not assumed — re-running the
+seeded pipeline over the first 3,000 profiles with both tables:
+
+| Quantity | Old `b` = 0.8693 | Fixed `b` = 0.9653 |
+|----------|------------------|--------------------|
+| `physics_risk_score` unchanged | — | 1,579 / 3,000 rows |
+| `physics_risk_score` changed | — | 1,421 / 3,000 rows |
+| max \|Δ `physics_risk_score`\| | — | 0.0105 |
+| rows newly crossing the 1.0 clip | — | 0 |
+| mean `dcs_probability` | 0.05784 | 0.05801 (+0.30%) |
+| max \|Δ `dcs_probability`\| | — | 0.0041 |
+| expected `label` flips | — | ≈0.02% of rows |
+
+Direction: raising `b` lowers the M-value (`a + P_amb/b`), which raises the M-value ratio.
+So the fix makes `physics_risk_score` slightly *higher*, never lower. The effect is small
+because compartment 16 (635 min half-time) barely loads during a 30-minute dive and is never
+the limiting tissue — the fast compartments set `physics_risk_score` in essentially every
+profile. **The shipped V2 CSV is therefore not materially wrong**, but it is no longer
+byte-reproducible from source. Regenerating V2 is a separate decision and has not been done.
+
+> Note, unfixed: the `a` column carries the **ZHL-16A** coefficients (0.6200, 0.5043,
+> 0.4410, …), not ZHL-16C's (0.6667, 0.5600, 0.4947, …), despite the function name and
+> docstring. The `b` column is shared across ZHL-16A/B/C, so the fix above is correct in
+> any variant. Correcting `a` would materially change every row of the dataset and is out
+> of scope for this correction; it is recorded here so it is not rediscovered as new.
+
+### Provenance discipline
+
+Corrections 9 and 10 both exist because derived numbers — logistic coefficients, summary
+statistics, table constants — were hand-transcribed into prose and never re-checked against
+the artefact they describe. The retraction at the top of Correction 9 is that same failure
+occurring *inside a document written to fix it*.
+
+Every numeric claim in this spec about the contents of a dataset must be recomputed from the
+dataset before it is written down, and cited with the file and line or the command that
+produced it. Numbers that cannot be regenerated on demand do not belong in prose.
 
 ---
 

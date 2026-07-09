@@ -704,7 +704,7 @@ def get_zhl16c_table():
     """Return Bühlmann ZHL-16C nitrogen tissue table, shape (16, 3).
     Columns: [t_half_min, a_bar, b].
     """
-    return np.array([
+    table = np.array([
         [   4.0, 1.2599, 0.5050], [   8.0, 1.0000, 0.6514],
         [  12.5, 0.8618, 0.7222], [  18.5, 0.7562, 0.7825],
         [  27.0, 0.6200, 0.8126], [  38.3, 0.5043, 0.8434],
@@ -712,8 +712,13 @@ def get_zhl16c_table():
         [ 109.0, 0.3750, 0.9092], [ 146.0, 0.3500, 0.9222],
         [ 187.0, 0.3295, 0.9319], [ 239.0, 0.3065, 0.9403],
         [ 305.0, 0.2835, 0.9477], [ 390.0, 0.2610, 0.9544],
-        [ 498.0, 0.2480, 0.9602], [ 635.0, 0.2327, 0.8693],
+        [ 498.0, 0.2480, 0.9602], [ 635.0, 0.2327, 0.9653],
     ], dtype=np.float64)
+    # b rises monotonically toward 1.0; a falls. V2 shipped with compartment 16's
+    # b set to 0.8693 (compartment 7's value) — this guard is why V3 cannot repeat it.
+    assert np.all(np.diff(table[:, 2]) > 0), 'ZHL-16C b column must be strictly increasing'
+    assert np.all(np.diff(table[:, 1]) < 0), 'ZHL-16C a column must be strictly decreasing'
+    return table
 
 
 # ── 2. PHYSIOLOGICAL MODIFIERS (unchanged from V2) ──────────────────────────
