@@ -6,7 +6,13 @@
 
 **Architecture:** A single self-contained script (`generate_dcs_dataset_v3.py`) re-runs the V2 Bühlmann simulation per profile while capturing the tissue-saturation time series, feeds that into a per-profile EP ODE solved with `scipy.integrate.solve_ivp` (Radau), extracts five bubble scalar features that enter a recalibrated logistic, and draws Bernoulli labels. The StandardScaler and recalibrated intercept are fitted across all 50,000 profiles before any labels are drawn.
 
-**Tech Stack:** Python 3, NumPy, Pandas, SciPy (`solve_ivp`), scikit-learn (`StandardScaler`), Matplotlib, tqdm, joblib.
+**Tech Stack:** Python 3, NumPy, Pandas, SciPy (`solve_ivp`), scikit-learn (`StandardScaler`), Matplotlib, tqdm.
+
+> **BLOCKED — do not execute this plan.** Correction 11 of the design spec records a verified
+> fatal flaw: with the specified `R₀`, quasi-static Laplace balance, and `t = 0` seeding, the
+> nucleus dissolves during descent and `bubble_R_max ≡ R₀` on every profile. All six bubble
+> columns are constants. The bug fixes below (units, solver, failure handling) are correct and
+> necessary but do **not** resolve it. A nucleation-model decision is required first.
 
 ---
 
@@ -173,6 +179,7 @@ Expected: `ImportError: cannot import name 'integrate_bubble'`
 # generate_dcs_dataset_v3.py
 """DCS Dataset V3 — Bühlmann ZHL-16C + Epstein-Plesset bubble dynamics."""
 
+import json
 import os
 import numpy as np
 import pandas as pd
@@ -180,9 +187,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
 from sklearn.preprocessing import StandardScaler
-import joblib
 from tqdm import tqdm
 
 OUTPUT_DIR = os.path.join(os.path.expanduser('~'), 'Desktop', 'DCS_PINN_DATASET_V3')
@@ -214,45 +219,47 @@ G        = 9.81            # gravitational acceleration (m/s²)
 R0       = 0.7e-6          # initial VPM nucleus radius (m), Yount (1991)
 R_CRIT   = 12.0e-6         # critical emboli-forming radius (m), Yount (1979)
 N0       = 100.0           # nucleation site density (sites/mL), Yount & Hoffman (1986)
+R_DISSOLVE = 0.1 * R0      # nucleus considered dissolved below this radius;
+                           # terminal event floor, keeps 2σ/R and 1/R finite
 
 
 # ── EP ODE ──────────────────────────────────────────────────────────────────
 
-def _ep_rhs(t, y, P_tissue_interp, P_amb_interp):
+def _ep_rhs(t, y, P_tissue, P_amb, time_points_s):
     """Epstein-Plesset ODE RHS with quasi-static Laplace mechanical equilibrium.
 
-    dR/dt = D · α_N2 · (P_tissue - P_amb - 2σ/R) / (ρ_gas · R)
-            · (1 + R / √(π·D·t))
+    dR/dt = D · (C_∞ - C_s) / (ρ_gas · R) · (1 + R / √(π·D·t))
 
     where:
       P_gas = P_amb + 2σ/R  (Laplace quasi-static balance, replaces Rayleigh-Plesset)
-      C_∞ - C_s = α_N2 · (P_tissue - P_gas)  (Henry's law)
-      ρ_gas from ideal gas law at P_gas
+      C_∞ - C_s = α_N2 · M_N2 · (P_tissue - P_gas)   (Henry's law, MASS concentration)
+      ρ_gas     = P_gas · M_N2 / (R_gas · T_body)    (ideal gas law, MASS density)
+
+    Both numerator and denominator must be mass-basis. α_N2 is molar
+    (mol/(m³·Pa)), so it is multiplied by M_N2 to give kg/m³. Omitting M_N2
+    inflates dR/dt by 1/M_N2 = 35.71x (verified numerically).
     """
     R = y[0]
-    if R <= 0.0:
-        return [0.0]
 
-    P_t_bar = float(P_tissue_interp(t))
-    P_a_bar = float(P_amb_interp(t))
-
-    P_t_pa  = P_t_bar * BAR_TO_PA
-    P_a_pa  = P_a_bar * BAR_TO_PA
+    P_t_pa = np.interp(t, time_points_s, P_tissue) * BAR_TO_PA
+    P_a_pa = np.interp(t, time_points_s, P_amb)    * BAR_TO_PA
 
     # Quasi-static Laplace: P_gas = P_amb + 2σ/R
     P_gas_pa = P_a_pa + 2.0 * SIGMA / R
 
-    # Gas density (ideal gas law)
-    rho_gas = P_gas_pa * M_N2 / (R_GAS * T_BODY)
+    rho_gas = P_gas_pa * M_N2 / (R_GAS * T_BODY)            # kg/m³
+    delta_C = ALPHA_N2 * M_N2 * (P_t_pa - P_gas_pa)         # kg/m³
 
-    # Diffusion gradient (Henry's law): C_∞ - C_s = α_N2·(P_tissue - P_gas)
-    delta_C = ALPHA_N2 * (P_t_pa - P_gas_pa)
-
-    # EP diffusion correction (avoid divide-by-zero at t=0)
     correction = 1.0 + R / np.sqrt(np.pi * D * max(t, 1e-10))
 
-    dRdt = D * delta_C / (rho_gas * R) * correction
-    return [dRdt]
+    return [D * delta_C / (rho_gas * R) * correction]
+
+
+def _dissolved(t, y, P_tissue, P_amb, time_points_s):
+    """Terminal event: the nucleus has dissolved. Keeps R strictly positive."""
+    return y[0] - R_DISSOLVE
+_dissolved.terminal = True
+_dissolved.direction = -1
 
 
 def integrate_bubble(P_tissue_series, P_amb_series, time_points_s):
@@ -264,30 +271,25 @@ def integrate_bubble(P_tissue_series, P_amb_series, time_points_s):
         time_points_s:   (180,) array, time in seconds
 
     Returns:
-        R_trajectory: (180,) float64, bubble radius in metres
+        R_trajectory: (180,) float64, bubble radius in metres. If the bubble
+                      dissolves, the trajectory is padded with R_DISSOLVE.
         success:      bool, False if solve_ivp failed
     """
-    t_span = (time_points_s[0], time_points_s[-1])
-
-    P_tissue_interp = interp1d(
-        time_points_s, P_tissue_series, kind='linear', fill_value='extrapolate'
-    )
-    P_amb_interp = interp1d(
-        time_points_s, P_amb_series, kind='linear', fill_value='extrapolate'
-    )
-
     sol = solve_ivp(
         _ep_rhs,
-        t_span,
+        (time_points_s[0], time_points_s[-1]),
         [R0],
-        method='Radau',
+        method='RK45',
         t_eval=time_points_s,
-        args=(P_tissue_interp, P_amb_interp),
+        args=(P_tissue_series, P_amb_series, time_points_s),
         rtol=1e-6,
-        atol=1e-9,
-        dense_output=False,
+        atol=1e-12,
+        events=_dissolved,
     )
-    return sol.y[0], sol.success
+    R = sol.y[0]
+    if len(R) < len(time_points_s):        # terminated early on dissolution
+        R = np.concatenate([R, np.full(len(time_points_s) - len(R), R_DISSOLVE)])
+    return R, sol.success
 ```
 
 - [ ] **Step 4: Run tests — all must pass**
@@ -422,8 +424,10 @@ def extract_bubble_features(R_trajectory, time_points_s):
     dRdt_max  = float(np.max(dRdt_um_s)) if len(dRdt_um_s) > 0 else 0.0
 
     # Time-integrated bubble volume (µm³·min)
+    # np.trapz was removed in NumPy 2.0; np.trapezoid is the replacement.
+    _trapz = getattr(np, 'trapezoid', None) or np.trapz
     time_min = time_points_s / 60.0
-    integrated_vol = float(np.trapz(R_um ** 3, time_min))
+    integrated_vol = float(_trapz(R_um ** 3, time_min))
 
     # n_critical: N0 · max(0, 1 − R_crit/R_max)
     # Exactly 0 when R_max ≤ R_crit; monotonically increasing above threshold.
@@ -1139,6 +1143,11 @@ def main():
                 )
 
         # ── EP bubble integration ──
+        # A failed solve must NOT be silently replaced with a fabricated static
+        # nucleus: the R0 fallback is min-risk physics, it enters the scaler fit
+        # and therefore shifts the z-scores of every other row, and failure is
+        # correlated with supersaturation (i.e. with the label). Flag it, exclude
+        # it from the scaler, and abort if it is not rare.
         R_traj, ep_ok = integrate_bubble(
             sim_result['P_tissue_timeseries'],
             sim_result['P_amb_timeseries'],
@@ -1146,9 +1155,10 @@ def main():
         )
         if not ep_ok:
             ep_failures += 1
-            R_traj = np.full(N_STEPS, R0)   # fallback: static nucleus
+            R_traj = np.full(N_STEPS, np.nan)
 
         bubble_feats = extract_bubble_features(R_traj, TIME_POINTS_S)
+        bubble_feats['ep_solve_failed'] = int(not ep_ok)
 
         timeseries[i] = depth_series
         for j, k in enumerate(BUBBLE_FEAT_KEYS):
@@ -1162,10 +1172,39 @@ def main():
             'P_surface':    P_surface,
         })
 
-    # ── Fit StandardScaler on all bubble features ──
-    bubble_scaler = StandardScaler()
-    bubble_z_matrix = bubble_scaler.fit_transform(bubble_feature_matrix)  # (50000, 6)
-    joblib.dump(bubble_scaler, os.path.join(OUTPUT_DIR, 'bubble_scaler.pkl'))
+    # ── Fit StandardScaler on SUCCESSFUL solves only ──
+    EP_FAILURE_ABORT_RATE = 0.01
+    if ep_failures / N_DIVES > EP_FAILURE_ABORT_RATE:
+        raise RuntimeError(
+            f'{ep_failures}/{N_DIVES} EP solves failed '
+            f'({ep_failures/N_DIVES:.2%} > {EP_FAILURE_ABORT_RATE:.0%}). '
+            'Refusing to emit a dataset whose bubble physics is fabricated on '
+            'a label-correlated subset. Fix the integrator, do not relax this.'
+        )
+
+    ok_mask = ~np.isnan(bubble_feature_matrix).any(axis=1)
+
+    # A constant column has zero variance and z = 0/0. If this fires, the bubble
+    # model is degenerate (see Correction 11) and the labels would carry no
+    # bubble signal at all — the exact failure Correction 1 exists to prevent.
+    stds = bubble_feature_matrix[ok_mask].std(axis=0)
+    degenerate = [k for k, s in zip(BUBBLE_FEAT_KEYS, stds) if s < 1e-12]
+    if degenerate:
+        raise RuntimeError(
+            f'Bubble features are constant across all profiles: {degenerate}. '
+            'The EP model never grows a bubble; standardising is undefined. '
+            'See Correction 11 in the design spec.'
+        )
+
+    bubble_scaler = StandardScaler().fit(bubble_feature_matrix[ok_mask])
+    bubble_z_matrix = np.full_like(bubble_feature_matrix, np.nan)
+    bubble_z_matrix[ok_mask] = bubble_scaler.transform(bubble_feature_matrix[ok_mask])
+    # Scaler params as JSON, not pickle: joblib.load on an untrusted pickle is
+    # arbitrary code execution, and this is twelve floats.
+    with open(os.path.join(OUTPUT_DIR, 'bubble_scaler.json'), 'w') as fh:
+        json.dump({'features': BUBBLE_FEAT_KEYS,
+                   'mean': bubble_scaler.mean_.tolist(),
+                   'scale': bubble_scaler.scale_.tolist()}, fh, indent=2)
 
     # ── Calibrate intercept using median standard-profile bubble z-scores ──
     std_mask = np.array([

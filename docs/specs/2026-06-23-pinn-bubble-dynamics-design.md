@@ -195,6 +195,62 @@ byte-reproducible from source. Regenerating V2 is a separate decision and has no
 > any variant. Correcting `a` would materially change every row of the dataset and is out
 > of scope for this correction; it is recorded here so it is not rediscovered as new.
 
+### Correction 11 (FATAL, unresolved) — the specified bubble model cannot grow a bubble
+
+Corrections 3 and 5 are each defensible in isolation and **jointly degenerate**. Quasi-static
+Laplace equilibrium with no VPM stabilising skin, a sub-micron `R₀`, and a nucleus seeded at
+`t = 0` guarantee that `R(t)` is monotonically decreasing on every profile.
+
+The mechanism, measured on 400 profiles drawn from V2's own seeded sampler:
+
+1. The bubble is seeded at dive start. During **descent** `P_amb` rises far faster than
+   `P_tissue` loads, so supersaturation is strongly **negative** (−3.67 bar at t = 2 min on
+   the worst profile). The nucleus immediately shrinks.
+2. The Laplace barrier is `2σ/R`. As `R` shrinks the barrier **grows**: 1.43 bar at 0.7 µm,
+   2.00 bar at 0.5 µm, 10.0 bar at 0.1 µm. Dissolution is a one-way trip.
+3. Supersaturation only turns positive on **ascent** (t ≈ 14 min). By then `R ≈ 0` and the
+   barrier at that radius is unreachable. The bubble never returns.
+
+Consequently `max R(t) = R(0) = R₀` for **every** profile:
+
+| Measured over real profiles | Result |
+|---|---|
+| Peak supersaturation `max(P_tissue − P_amb)` | mean 0.81, median 0.77, max 2.26 bar |
+| Laplace barrier at `R₀ = 0.7 µm` (`2σ/R₀`) | **1.4286 bar** |
+| Profiles ever clearing the barrier *at R₀* | 65 / 400 (16.2%) — but all *after* dissolution |
+| `bubble_R_max` across 120 profiles | min = max = 0.700000 µm, **std = 1.1×10⁻¹⁶** |
+| `bubble_R_max > R₀` (the spec's validation check, strict) | passes on **0 / 120** rows |
+| Minimum seed radius that could grow on the *best* profile | `2σ/ΔP_max` = **0.443 µm** |
+
+So all six bubble columns are constants. `StandardScaler` divides by ~zero, the z-scores are
+`0/0`, and `dcs_probability` is `NaN` or — if σ is clamped — identical to V2 with six constant
+columns appended. **Correction 1's fix does not work as specified: the dataset it produces is
+exactly the "near-identical to V2 with more columns" outcome Correction 1 was written to
+prevent.** The failure is silent, because the `ep_failures` fallback also writes `R₀`.
+
+This is not a numerical bug; it is the physical model. Yount's nuclei are *stabilised* —
+a surfactant skin resists dissolution and is the entire reason sub-micron nuclei persist in
+vivo. Correction 3 removed the skin along with Rayleigh-Plesset and kept the VPM `R₀`. The two
+corrections are individually right and jointly incoherent.
+
+**Resolving this requires a physics decision and is deliberately left open.** The candidate
+directions, none yet adopted:
+
+1. **Restore the VPM stabilising skin** (Yount 1979/1991). Add a skin pressure term so the
+   nucleus resists dissolution below `R₀`. This is the change most faithful to the cited
+   literature and re-earns the `R₀ = 0.7 µm` value.
+2. **Seed the bubble at ascent onset** rather than `t = 0`. Physically defensible (nucleation
+   is triggered by decompression), and 16% of profiles then clear the barrier at `R₀` and grow.
+   `bubble_R_max` becomes strongly zero-inflated and bimodal — arguably realistic, since DCS is
+   rare, but z-scoring such a column is questionable.
+3. **Use a larger seed radius** (Van Liew's µm-scale seeds). Cheapest, but abandons the VPM
+   citation that Correction 5 was written to honour.
+4. **Add a growth ceiling regardless.** Once a bubble does clear the barrier, `2σ/R` collapses
+   and growth runs away — an unbounded EP bubble reaches millimetre radii, which is not physics.
+
+Until one is chosen, **V3 must not be generated.** No downstream fix (solver, units, scaler)
+changes this outcome.
+
 ### Provenance discipline
 
 Corrections 9 and 10 both exist because derived numbers — logistic coefficients, summary
@@ -285,18 +341,33 @@ C_s(t, R)    = P_gas(t)    · α_N2
 
 So the diffusion gradient simplifies to:
 ```
-C_∞ − C_s = α_N2 · (P_tissue(t) − P_amb(t) − 2σ/R)
+C_∞ − C_s = α_N2 · M_N2 · (P_tissue(t) − P_amb(t) − 2σ/R)
 ```
+
+> **Correction (2026-07-09) — the `M_N2` factor.** `α_N2` is a *molar* solubility
+> (mol/(m³·Pa)), so `α_N2 · ΔP` is a molar concentration (mol/m³). But `ρ_gas` below is a
+> *mass* density (kg/m³). The quotient `D·ΔC/(ρ_gas·R)` then carries units of mol/kg, not m/s.
+> Multiplying `ΔC` by `M_N2` puts both on a mass basis. Verified numerically: the uncorrected
+> form inflates `dR/dt` by exactly `1/M_N2 = 35.714×`. A uniform scale error is hidden by
+> z-scoring, but the two *threshold* quantities — whether `R` crosses `R_crit` (feeding
+> `bubble_n_critical`) and whether growth beats the Laplace barrier — are not scale-invariant,
+> so the bug corrupts precisely the features standardisation does not wash out.
 
 `P_tissue(t)` is the tissue N₂ partial pressure time series from the Bühlmann simulation
 (max across 16 compartments at each step). The full ODE is:
 
 ```
-dR/dt = D · α_N2 · (P_tissue(t) − P_amb(t) − 2σ/R) / (ρ_gas(t) · R)
+dR/dt = D · α_N2 · M_N2 · (P_tissue(t) − P_amb(t) − 2σ/R) / (ρ_gas(t) · R)
         · (1 + R / √(π · D · max(t, ε)))
 ```
 
 where `ε = 1×10⁻¹⁰ s` prevents division by zero at `t = 0`.
+
+> **Note on the transient term.** For all realistic `t` (≥ 0.01 s) the correction
+> `1 + R/√(πDt)` evaluates to ≈1.000 and does no work; at `t = ε` it evaluates to ≈884, spiking
+> the initial derivative. Its `t` is dive-clock time, not bubble-age time, which is
+> conceptually wrong and happens not to bite only because the term is inert. Consider dropping
+> it, or reintroducing it against bubble age, when Correction 11 is resolved.
 
 `ρ_gas(t)` is computed each step from the ideal gas law:
 ```
@@ -346,11 +417,31 @@ sol = solve_ivp(
 R_trajectory = sol.y[0]               # metres, shape (180,)
 ```
 
-**Why Radau:** Radau is an implicit Runge-Kutta method designed for stiff ODEs. It is exact
-(within tolerance) and far more reliable than an explicit solver for the EP equation near
-the Laplace threshold where the denominator `(C_∞ − C_s)` changes sign. `BDF` is an
-acceptable alternative. `RK45` (the default) will fail or take tiny steps in the stiff
-regime near bubble equilibrium.
+**Solver choice — corrected 2026-07-09.** The original text claimed Radau was required and
+that "`RK45` will fail or take tiny steps." **Measured on 60 profiles from V2's own seeded
+sampler, the opposite is true:**
+
+| Method | Successful solves | Mean time | Mean `nfev` |
+|--------|------------------|-----------|-------------|
+| `Radau` | **18 / 60** | 22.6 ms | 876 |
+| `BDF` | 60 / 60 | 18.9 ms | 520 |
+| `LSODA` | 60 / 60 | 2.6 ms | 192 |
+| **`RK45`** | **60 / 60** | **1.6 ms** | 148 |
+
+Radau fails on 70% of realistic profiles ("required step size is less than spacing between
+numbers"). The cause is the `if R <= 0: return [0.0]` guard in the original `_ep_rhs`: it makes
+the RHS non-smooth, which destroys the implicit solver's Jacobian and stalls its step
+controller. The fix is a `solve_ivp` **terminal event** at `R = 0.1·R₀` instead of a guard,
+which keeps the RHS smooth over the whole integration interval.
+
+Two further measured points: replacing `interp1d` with an `np.interp` closure halves Radau's
+cost (22.6 → 10.7 ms), because `interp1d.__call__` costs ~7.3 µs against `np.interp`'s ~0.6 µs
+and is paid ~800× per solve. And the spec's "~2 ms/profile, ~5 minutes for 50,000" was
+asserted, never measured; the honest figures are ~1.6 ms with `RK45` + `np.interp` + events
+(≈1.5 min for 50,000), or ~22 ms with the original recipe (≈18 min) — *for solves that fail*.
+
+`RK45` with a terminal dissolution event is the specified method. `LSODA` is an acceptable
+alternative.
 
 **Why not a PINN:** See §Correction 2.
 
@@ -493,13 +584,36 @@ All 5 structural checks (row count, NaN, score bounds, label binary, DCS rate �
 
 ```
 === BUBBLE PHYSICS SANITY CHECKS ===
-[PASS/FAIL] bubble_R_max > R₀ (0.7 µm) for all profiles
+[PASS/FAIL] solve_ivp success status = True for all 50,000 profiles   (hard abort, not a warning)
+[PASS/FAIL] bubble_R_max >= R₀ (0.7 µm) for all profiles
+[PASS/FAIL] std(bubble_R_max) > 0            — non-degenerate; see Correction 11
+[PASS/FAIL] bubble_R_max <= R_MAX_PLAUSIBLE  — an unbounded EP bubble reaches mm radii
 [PASS/FAIL] bubble_n_critical = 0 for all profiles where bubble_R_max ≤ R_crit (12 µm)
 [PASS/FAIL] bubble_integrated_volume > 0 for all profiles
-[PASS/FAIL] DCS rate increases monotonically across bubble_R_max quartiles
-[PASS/FAIL] DCS rate increases monotonically across bubble_integrated_volume quartiles
-[PASS/FAIL] solve_ivp success status = True for all 50,000 profiles
 ```
+
+**Three corrections to the original check list (2026-07-09):**
+
+1. **`bubble_R_max > R₀` was strict and always fails.** `R₀` is the initial condition and is
+   included in `t_eval`, so any non-growing bubble has `max R(t) = R₀` exactly. Under the
+   current model that is *every* profile (Correction 11). The check must be `>=`. Loosening it
+   is only safe once the `ep_solve_failed` flag exists, because the old `R₀` fallback was
+   indistinguishable from a genuine non-growing solve.
+2. **The quartile monotonicity checks are tautologies and have been removed.** Labels are drawn
+   with a *positive* coefficient on `z(bubble_R_max)` and `z(bubble_integrated_volume)`. That a
+   positive coefficient yields a positive gradient across that feature's quartiles is
+   arithmetic, not evidence. The check cannot fail, so it validates nothing. What *would* be
+   informative — and is not currently measured — is whether a model trained on the bubble
+   features outperforms one trained on `physics_risk_score` alone.
+3. **Two new checks guard the failure modes that actually occurred:** zero-variance bubble
+   features (the model never grows a bubble), and unbounded growth (once `R` clears the
+   barrier, `2σ/R` collapses and growth runs away).
+
+`solve_ivp` failure is now a **hard abort above a 1% rate**, never a silent `R₀` substitution:
+the fallback wrote fabricated minimum-risk physics into rows that are then labelled and shipped
+indistinguishably from real solves, *and* it entered the `StandardScaler` fit, shifting the
+z-scores of all 50,000 rows. Failure is correlated with supersaturation, hence with the label.
+An `ep_solve_failed` column is emitted so any residual failures are auditable after the fact.
 
 ### Calibration targets
 
