@@ -136,12 +136,27 @@ def _rhs(t, y, t_grid_s, Pt, Pa, floor):
 
 
 def bubble_rmax(t_min, Pt, Pa, R0):
+    # max_step bounded to the forcing grid + terminal ceiling event: the skin clamp
+    # makes dR/dt = 0 at the floor, and unbounded adaptive RK45 strides over the
+    # growth window, reporting R_max = R0 on dives that actually grow. See the
+    # ep_bubble.py fix (2026-07-10).
     ts = t_min * 60.0
+    max_step = float(np.min(np.diff(ts)))
+
+    def _hit(t, y, *a):
+        return y[0] - R_CEILING
+    _hit.terminal = True
+    _hit.direction = 1
+
     sol = solve_ivp(_rhs, (ts[0], ts[-1]), [R0], method='RK45', t_eval=ts,
-                    args=(ts, Pt, Pa, R0), rtol=1e-6, atol=1e-12)
+                    args=(ts, Pt, Pa, R0), rtol=1e-6, atol=1e-12,
+                    max_step=max_step, events=_hit)
     if not sol.success:
         return np.nan
-    return float(np.clip(sol.y[0], R0, R_CEILING).max())
+    R = sol.y[0]
+    if len(R) < len(ts):
+        R = np.concatenate([R, np.full(len(ts) - len(R), R_CEILING)])
+    return float(np.clip(R, R0, R_CEILING).max())
 
 
 def logistic_ll(beta, X, y):

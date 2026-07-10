@@ -72,14 +72,28 @@ def _rhs(t, y, P_tissue, P_amb, skin_floor, ceiling):
 
 
 def integrate(P_tissue, P_amb, R0, t_start=0.0, skin_floor=0.0, ceiling=None):
-    """Return max bubble radius (m), or nan if the solve failed."""
+    """Return max bubble radius (m), or nan if the solve failed.
+
+    max_step is bounded to the forcing grid: the skin clamp makes dR/dt = 0 at the
+    floor, and an unbounded adaptive RK45 strides over the growth window and reports
+    R_max = R0 on dives that actually grow. See the ep_bubble.py fix (2026-07-10).
+    """
     mask = TIME_S >= t_start
     t_eval = TIME_S[mask]
     if len(t_eval) < 2:
         return R0
+    max_step = float(np.min(np.diff(t_eval)))
+    kw = {}
+    if ceiling:
+        def _hit(t, y, *a):
+            return y[0] - ceiling
+        _hit.terminal = True
+        _hit.direction = 1
+        kw['events'] = _hit
     sol = solve_ivp(_rhs, (t_eval[0], t_eval[-1]), [R0], method='RK45', t_eval=t_eval,
-                    args=(P_tissue, P_amb, skin_floor, ceiling), rtol=1e-6, atol=1e-12)
-    if not sol.success or sol.y.shape[1] != len(t_eval):
+                    args=(P_tissue, P_amb, skin_floor, ceiling), rtol=1e-6, atol=1e-12,
+                    max_step=max_step, **kw)
+    if not sol.success:
         return float('nan')
     R = np.clip(sol.y[0], max(skin_floor, R_MIN), ceiling or np.inf)
     return float(R.max())
