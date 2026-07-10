@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import numpy as np
 import pytest
 
 from benchmark.buhlmann import (
     zhl16c_table, half_time_k, haldane_step, amb_bar, m_value, ceiling_fsw,
-    P_SURFACE, F_N2_AIR,
+    P_SURFACE, F_N2_AIR, FSW_TO_BAR,
 )
 
 CANONICAL_B = [0.5050, 0.6514, 0.7222, 0.7825, 0.8126, 0.8434, 0.8693, 0.8910,
@@ -61,6 +63,30 @@ def test_gradient_factor_one_reduces_to_plain_ceiling():
     a, b = table[:, 1], table[:, 2]
     P_t = np.full(16, 2.5)
     assert ceiling_fsw(P_t, a, b, gf=1.0) == pytest.approx(ceiling_fsw(P_t, a, b))
+
+
+def test_gradient_factor_one_equals_the_plain_buhlmann_formula():
+    """gf=1.0 must reduce to the classic ceiling (P_t - a) * b, computed independently.
+
+    The neighbouring test compares ceiling_fsw against its own default argument, so it
+    passes whatever the formula does. This one recomputes the target from first
+    principles. Task 4's gradient-factor interpolation relies on this degeneracy.
+    """
+    table = zhl16c_table()
+    a, b = table[:, 1], table[:, 2]
+    P_t = np.full(16, 2.5)
+    tol_bar = np.max((P_t - a) * b)                      # classic Bühlmann, no gf term
+    expected = max(0.0, float((tol_bar - P_SURFACE) / FSW_TO_BAR))
+    assert ceiling_fsw(P_t, a, b, gf=1.0) == pytest.approx(expected)
+
+
+def test_smaller_gradient_factor_is_strictly_more_conservative():
+    """Monotone in gf: every decrease in gf must deepen the ceiling."""
+    table = zhl16c_table()
+    a, b = table[:, 1], table[:, 2]
+    P_t = np.full(16, 2.5)
+    ceilings = [ceiling_fsw(P_t, a, b, gf=g) for g in (0.1, 0.3, 0.5, 0.7, 1.0)]
+    assert all(x > y for x, y in zip(ceilings, ceilings[1:]))
 
 
 def test_smaller_gradient_factor_gives_deeper_ceiling():
