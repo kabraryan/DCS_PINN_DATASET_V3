@@ -262,7 +262,7 @@ git commit -m "feat(benchmark): shared Bühlmann module with property tests"
 
 **Interfaces:**
 - Consumes: `benchmark.buhlmann` (all of Task 1).
-- Produces: `Dive` dataclass (`dive_id: str`, `depth_fsw: float`, `bottom_time_min: float`, `ascent_time_min: float`, `outcome: float`, `data_set: str`); `Profile` dataclass (`dive_id: str`, `recon: str`, `t_min: np.ndarray`, `depth_fsw: np.ndarray`, `flags: tuple[str, ...]`); `reconstruct(dive: Dive, recon: str) -> Profile` where `recon in {"linear", "staged"}`; `RECONSTRUCTIONS: tuple[str, str]`.
+- Produces: `Dive` dataclass (`dive_id: str`, `depth_fsw: float`, `bottom_time_min: float`, `ascent_time_min: float`, `outcome: float`, `data_set: str`); `Profile` dataclass (`dive_id: str`, `recon: str`, `t_min: np.ndarray`, `depth_fsw: np.ndarray`, `flags: Tuple[str, ...]`); `reconstruct(dive: Dive, recon: str) -> Profile` where `recon in {"linear", "staged"}`; `RECONSTRUCTIONS: Tuple[str, str]`; `required_ascent_min(dive: Dive, gf_lo: float = 1.0, gf_hi: float = 1.0) -> Tuple[float, bool]`; `_gf_at(depth_fsw, first_stop_fsw, gf_lo, gf_hi) -> float`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -428,17 +428,33 @@ def _load_to_bottom(dive: Dive, k: np.ndarray) -> np.ndarray:
     return P
 
 
-def _schedule(P: np.ndarray, depth_fsw: float, a, b, k, gf: float = 1.0):
+def _gf_at(depth_fsw: float, first_stop_fsw: float, gf_lo: float, gf_hi: float) -> float:
+    """Gradient factor interpolated linearly: gf_lo at the first stop, gf_hi at the surface.
+
+    This is what real dive computers do. With gf_lo == gf_hi == 1.0 it degenerates to
+    the plain Bühlmann ceiling, which is exactly what ZHL16C wants.
+    """
+    if first_stop_fsw <= 0.0:
+        return gf_hi
+    frac = min(max(depth_fsw / first_stop_fsw, 0.0), 1.0)
+    return gf_hi + (gf_lo - gf_hi) * frac
+
+
+def _schedule(P: np.ndarray, depth_fsw: float, a, b, k,
+              gf_lo: float = 1.0, gf_hi: float = 1.0):
     """Ceiling-driven ascent. Returns (segments, travel_min, stop_min, hit_cap)."""
     P = P.copy()
     d = float(depth_fsw)
     segs: List[Tuple[str, float, float, float]] = []
     travel = stop = 0.0
     hit_cap = True
+    # The first stop is set by the most conservative factor, gf_lo.
+    first_stop = np.ceil(ceiling_fsw(P, a, b, gf_lo) / STOP_INCREMENT_FSW) * STOP_INCREMENT_FSW
     for _ in range(MAX_STOP_ITERS):
         if d <= 0.0:
             hit_cap = False
             break
+        gf = _gf_at(d, first_stop, gf_lo, gf_hi)
         target = min(np.ceil(ceiling_fsw(P, a, b, gf) / STOP_INCREMENT_FSW)
                      * STOP_INCREMENT_FSW, d)
         if target < d:
@@ -458,12 +474,13 @@ def _schedule(P: np.ndarray, depth_fsw: float, a, b, k, gf: float = 1.0):
     return segs, travel, stop, hit_cap
 
 
-def required_ascent_min(dive: Dive, gf: float = 1.0) -> Tuple[float, bool]:
+def required_ascent_min(dive: Dive, gf_lo: float = 1.0,
+                        gf_hi: float = 1.0) -> Tuple[float, bool]:
     """Minutes of ascent the ceiling demands, and whether the search hit its cap."""
     table = zhl16c_table()
     a, b, k = table[:, 1], table[:, 2], half_time_k(table)
     P = _load_to_bottom(dive, k)
-    _, travel, stop, hit_cap = _schedule(P, dive.depth_fsw, a, b, k, gf)
+    _, travel, stop, hit_cap = _schedule(P, dive.depth_fsw, a, b, k, gf_lo, gf_hi)
     return travel + stop, hit_cap
 
 
@@ -674,6 +691,7 @@ from typing import Dict, Optional
 
 import numpy as np
 
+from benchmark.algorithms.base import AlgorithmError
 from benchmark.buhlmann import (
     F_N2_AIR, amb_bar, half_time_k, haldane_step, m_value, zhl16c_table,
 )
@@ -715,7 +733,8 @@ class ZHL16C:
         by the three recorded scalars) and on the RECORDED ascent time -- not on the
         reconstructed ascent shape.
         """
-        required, hit_cap = required_ascent_min(dive, gf=self.params["gf_hi"])
+        required, hit_cap = required_ascent_min(
+            dive, gf_lo=self.params["gf_lo"], gf_hi=self.params["gf_hi"])
         if hit_cap:
             raise AlgorithmError(f"{self.name}: schedule cap on {dive.dive_id}")
         return float(required - dive.ascent_time_min)
@@ -736,12 +755,6 @@ REGISTRY: Dict[str, Algorithm] = {
 }
 
 __all__ = ["REGISTRY", "Algorithm", "AlgorithmError"]
-```
-
-Add the missing import to `zhl16c.py` (the tests will catch it if omitted):
-
-```python
-from benchmark.algorithms.base import AlgorithmError
 ```
 
 - [ ] **Step 4: Run the tests, verify they pass**
@@ -797,6 +810,29 @@ def test_gf_risk_index_rises_with_depth():
     a = REGISTRY["zhl16c_gf"]
     assert a.risk_index(reconstruct(deep, "linear"), deep) > \
            a.risk_index(reconstruct(shallow, "linear"), shallow)
+
+
+def test_gf_lo_is_load_bearing_not_dead():
+    """gf_lo sets the first stop. A smaller gf_lo must demand more decompression.
+
+    Without interpolation gf_lo is unused, this test passes trivially, and the
+    parameter silently poisons the cache key. It must actually change the answer.
+    """
+    from benchmark.algorithms.zhl16c_gf import ZHL16CGF
+    d = dive(depth=180.0, bt=40.0, at=20.0)
+    p = reconstruct(d, "staged")
+    strict = ZHL16CGF(gf_lo=0.10, gf_hi=0.70).deficit(p, d)
+    loose = ZHL16CGF(gf_lo=0.90, gf_hi=0.70).deficit(p, d)
+    assert strict > loose
+
+
+def test_gf_one_one_matches_plain_buhlmann_deficit():
+    """The interpolation must degenerate to the plain ceiling at gf = 1.0/1.0."""
+    from benchmark.algorithms.zhl16c_gf import ZHL16CGF
+    d = dive(depth=150.0, bt=45.0, at=25.0)
+    p = reconstruct(d, "staged")
+    assert ZHL16CGF(gf_lo=1.0, gf_hi=1.0).deficit(p, d) == \
+        pytest.approx(REGISTRY["zhl16c"].deficit(p, d))
 ```
 
 - [ ] **Step 2: Run, verify failure**
@@ -827,9 +863,14 @@ from benchmark.profile import Dive, Profile
 
 
 class ZHL16CGF(ZHL16C):
+    """gf_lo applies at the first stop, gf_hi at the surface; linear in between.
+
+    Inherits deficit() unchanged: it reads both params and passes them to the
+    ceiling-driven schedule, so gf_lo is load-bearing rather than decorative.
+    """
+
     def __init__(self, gf_lo: float = 0.30, gf_hi: float = 0.70):
         super().__init__(gf_lo=gf_lo, gf_hi=gf_hi, name="zhl16c_gf")
-        self.params: Dict[str, float] = {"gf_lo": gf_lo, "gf_hi": gf_hi}
 
     def risk_index(self, profile: Profile, dive: Dive) -> float:
         best = -np.inf
@@ -1840,6 +1881,21 @@ def load_dives(csv: Optional[str], marginal: str):
     return dives, y, groups, report
 
 
+_PROFILE_CACHE: Dict[Tuple[str, str], object] = {}
+
+
+def _profile(dive: Dive, recon: str):
+    """CACHE 1: reconstruction is invariant to which algorithm consumes it.
+
+    In-process, not on disk: a Profile is two arrays, cheap to rebuild (0.7 ms)
+    but wasteful to redo once per algorithm.
+    """
+    key = (dive.dive_id, recon)
+    if key not in _PROFILE_CACHE:
+        _PROFILE_CACHE[key] = reconstruct(dive, recon)
+    return _PROFILE_CACHE[key]
+
+
 def build_matrix(dives: List[Dive], recon: str, algo_name: str, cache_root: Path):
     algo = REGISTRY[algo_name]
     risk, deficit, failures = [], [], 0
@@ -1849,7 +1905,7 @@ def build_matrix(dives: List[Dive], recon: str, algo_name: str, cache_root: Path
         k_d = cache_key("deficit", algo_name, algo.params, recon, d.dive_id,
                         d.depth_fsw, d.bottom_time_min, d.ascent_time_min)
         try:
-            p = reconstruct(d, recon)
+            p = _profile(d, recon)                      # CACHE 1
             risk.append(cached(cache_root, k_r, lambda: algo.risk_index(p, d)))
             deficit.append(cached(cache_root, k_d, lambda: algo.deficit(p, d)))
         except AlgorithmError:
