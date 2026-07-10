@@ -13,6 +13,11 @@
 > nucleus dissolves during descent and `bubble_R_max ≡ R₀` on every profile. All six bubble
 > columns are constants. The bug fixes below (units, solver, failure handling) are correct and
 > necessary but do **not** resolve it. A nucleation-model decision is required first.
+>
+> **Correction 12** narrows that decision: enlarging `R₀` or seeding at ascent onset were
+> measured and are **equally degenerate** — gas leaves an undersaturated bubble regardless of
+> its radius. Only a VPM stabilising skin averts it, and a growth ceiling is required with it.
+> Reproduce: `python scripts/verify_nucleation_options.py`
 
 ---
 

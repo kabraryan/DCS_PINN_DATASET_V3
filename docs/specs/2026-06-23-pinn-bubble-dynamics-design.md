@@ -234,22 +234,116 @@ vivo. Correction 3 removed the skin along with Rayleigh-Plesset and kept the VPM
 corrections are individually right and jointly incoherent.
 
 **Resolving this requires a physics decision and is deliberately left open.** The candidate
-directions, none yet adopted:
+directions:
 
 1. **Restore the VPM stabilising skin** (Yount 1979/1991). Add a skin pressure term so the
    nucleus resists dissolution below `R₀`. This is the change most faithful to the cited
    literature and re-earns the `R₀ = 0.7 µm` value.
-2. **Seed the bubble at ascent onset** rather than `t = 0`. Physically defensible (nucleation
-   is triggered by decompression), and 16% of profiles then clear the barrier at `R₀` and grow.
-   `bubble_R_max` becomes strongly zero-inflated and bimodal — arguably realistic, since DCS is
-   rare, but z-scoring such a column is questionable.
+2. **Seed the bubble at ascent onset** rather than `t = 0`. Physically defensible, since
+   nucleation is triggered by decompression.
 3. **Use a larger seed radius** (Van Liew's µm-scale seeds). Cheapest, but abandons the VPM
    citation that Correction 5 was written to honour.
 4. **Add a growth ceiling regardless.** Once a bubble does clear the barrier, `2σ/R` collapses
    and growth runs away — an unbounded EP bubble reaches millimetre radii, which is not physics.
 
+> **This menu is misleading. See Correction 12** — options 2 and 3 were measured and **do not
+> work**; they leave `bubble_R_max` exactly as constant as the current spec. Option 4 is a
+> precondition, not an alternative. The real choice is Option 1 + Option 4, or no bubble layer.
+
 Until one is chosen, **V3 must not be generated.** No downstream fix (solver, units, scaler)
 changes this outcome.
+
+### Correction 12 — the four-option menu in Correction 11 is wrong; only the skin works
+
+Correction 11 listed four candidate fixes as if they were interchangeable. They are not. All
+four were implemented and measured on 250 profiles from V2's seeded sampler
+(`scripts/verify_nucleation_options.py`). **Options 2 and 3 leave `bubble_R_max` exactly as
+constant as the unfixed spec.** Only the VPM skin produces a bubble that ever grows.
+
+| Configuration | Grew past its own `R₀` | std(`bubble_R_max`) | Verdict |
+|---|---|---|---|
+| Spec as written — `R₀` = 0.7 µm, `t` = 0, no skin | **0.0%** | 0 | degenerate |
+| **Opt 2** — seed at ascent onset, `R₀` = 0.7 µm | **0.0%** | 0 | degenerate |
+| **Opt 3** — `R₀` = 2 µm | **0.0%** | 0 | degenerate |
+| **Opt 3** — `R₀` = 5 µm | **0.0%** | 0 | degenerate |
+| **Opt 3** — `R₀` = 10 µm | **0.0%** | 0 | degenerate |
+| **Opt 2 + 3** — `R₀` = 5 µm, seed at ascent | **0.0%** | 0 | degenerate |
+| **Opt 1** — VPM skin, `R₀` = 0.7 µm | 3.2% | 43.6 µm | **alive** |
+
+#### Why a bigger seed cannot help
+
+Correction 11 attributed the degeneracy to the Laplace barrier `2σ/R` rising as `R` falls.
+That is real, but it is the *second* effect and not the binding one. The diffusion gradient is
+
+```
+C_∞ − C_s  ∝  (P_tissue − P_amb) − 2σ/R
+```
+
+On descent `P_tissue − P_amb ≈ −1.8 bar` (measured; −3.67 bar at the extreme). **That deficit
+is independent of `R`.** Gas leaves the bubble because the tissue is undersaturated, not because
+the bubble is small. A 10 µm nucleus bleeds gas exactly as surely as a 0.7 µm one — it merely
+takes longer, and descent plus bottom time is ≥ 10 minutes, which is ample.
+
+So the degeneracy is not a *starting-size* problem and enlarging `R₀` cannot fix it. It is a
+*nothing-arrests-the-dissolution* problem. Only a mechanism that halts shrinkage survives to
+the ascent, which is the entire reason Yount's nuclei carry a stabilising surfactant skin.
+Correction 3 deleted the one component that makes the model non-degenerate.
+
+Option 2 fails for the same reason: at ascent **onset** the diver is still deep and the tissue
+is still undersaturated, so the nucleus dissolves during the early climb, before supersaturation
+ever turns positive (t ≈ 14 min).
+
+#### The skin makes `R₀` a consequential parameter
+
+With the skin in place, `R₀` controls both how often bubbles form and how much independent
+signal the feature carries:
+
+| `R₀` (with skin) | Grew | ρ(`bubble_R_max`, `physics_risk_score`) | Reading |
+|---|---|---|---|
+| 0.7 µm (the Yount/VPM value) | 3.2% | **+0.29** | rare, and largely independent of `prs` |
+| 1.0 µm | 14.8% | +0.56 | |
+| 2.0 µm | 42.8% | +0.82 | too common; nearly redundant with `prs` |
+| 3.0 µm | 60.0% | +0.85 | |
+
+The literature value `R₀ = 0.7 µm` is also the best-behaved: DCS is rare, so a ~3% bubble rate
+is plausible, and the **low** correlation with `physics_risk_score` means the feature carries
+information the Bühlmann layer does not already contain — which is the only reason to add a
+bubble layer at all. At `R₀ = 2 µm` the feature is 0.82-collinear with `prs` and adds nothing.
+
+This cuts against the intuition that a larger, "safer," more arbitrary seed is the conservative
+choice. It is neither conservative nor safe: it is degenerate without the skin, and redundant
+with it.
+
+#### The growth ceiling is a precondition, not an option
+
+Without a ceiling, bubbles that clear the barrier run away: measured `max R` of **267–284 µm**
+across all skin configurations. `2σ/R` collapses as `R` grows, so growth is self-accelerating.
+Option 4 must be applied regardless of which nucleation model is adopted.
+
+#### What this leaves
+
+The real choice is **Option 1 + Option 4** (VPM skin, `R₀` = 0.7 µm, growth ceiling), or **no
+bubble layer at all**. There is no cheap middle path; options 2 and 3 were the cheap middle
+path and they do not exist.
+
+Adopting Option 1 means accepting free parameters (skin compression modulus, initial skin
+tension, crushing pressure) that cannot be measured directly. That objection is sound, and it
+sharpens rather than weakens the case made in the Honesty Ceiling: **if unmeasurable parameters
+must be introduced, they should be fitted to the 2,700 real dives in
+`FINAL DIVE/datasets/real/dcs_all_dives.csv` — which contain 1,932 real non-DCS controls —
+not chosen by hand.** Fitting turns `R₀` from an arbitrary constant into an estimated parameter
+with a confidence interval, and turns "do bubble features add signal?" into a falsifiable
+question. (Note that `dcs_real_cases.csv`, despite having full depth–time curves, is
+**positives-only** — all 428 rows have `outcome = 1.0` — and cannot support a risk fit.)
+
+#### Caveats on these measurements
+
+- The skin is modelled here as a **hard floor** (`R` cannot fall below `R₀`). True VPM has a
+  *compressible* skin with a crushing pressure that permits partial shrinkage. The qualitative
+  conclusion (only the skin averts degeneracy) is robust; the exact 3.2% is not.
+- All figures assume `σ = 0.050 N/m`. The dead/alive classification is insensitive to `σ`
+  (undersaturation kills free bubbles at any `σ`), but the growth rates are not.
+- Reproduce with: `python scripts/verify_nucleation_options.py`
 
 ### Provenance discipline
 
