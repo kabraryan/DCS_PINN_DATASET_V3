@@ -137,7 +137,7 @@ def four_gate(X_raw, x, y, groups, *, n_rep: int = 5, seed: int = 0,
     reasons: List[str] = []
     if abs(d.mean()) <= MIN_DELTA:
         reasons.append(f"magnitude |{d.mean():+.4f}| <= {MIN_DELTA}")
-    if p >= MAX_P:
+    if np.isnan(p) or p >= MAX_P:
         reasons.append(f"p={p:.3f} >= {MAX_P}")
     if np.mean(d > 0) < MIN_FRAC_IMPROVED:
         reasons.append(f"only {np.mean(d > 0):.0%} of folds improved")

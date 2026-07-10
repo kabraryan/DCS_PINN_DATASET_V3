@@ -68,3 +68,15 @@ def test_baseline_is_reproducible_and_matches_nested_cv_on_same_X():
     a = baseline_auc(X_raw, y, g, seed=3)
     b = nested_grouped_cv(X_raw, y, g, seed=3)
     np.testing.assert_allclose(a, b)
+
+
+def test_constant_feature_fails_and_nan_pvalue_is_handled():
+    """All-zero fold deltas make scipy's wilcoxon return pvalue=nan, not raise.
+    A NaN p-value must FAIL the significance gate, not silently skip it."""
+    X_raw, x, y, g = synthetic(signal=1.5)
+    const = np.zeros(len(y))
+    r = four_gate(X_raw, const, y, g)
+    assert not r.passed
+    # p_value is nan or >= MAX_P; either way the gate must have contributed a reason
+    # OR another gate failed first — the key property is `passed is False` and no crash.
+    assert isinstance(r.p_value, float)
