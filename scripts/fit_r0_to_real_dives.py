@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -33,6 +34,9 @@ from scipy.optimize import minimize
 from scipy.stats import spearmanr
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import GroupKFold
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from staged_ascent import build_profile as staged_profile  # noqa: E402
 
 warnings.filterwarnings('ignore')
 
@@ -155,6 +159,9 @@ def fit_logistic(X, y):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--marginal', choices=['exclude', 'positive', 'negative'], default='exclude')
+    ap.add_argument('--ascent', choices=['linear', 'staged'], default='staged',
+                    help='linear = straight ascent over ascent_time_min; '
+                         'staged = Buhlmann-ceiling stops rescaled to ascent_time_min')
     ap.add_argument('--csv', default=REAL_CSV)
     args = ap.parse_args()
 
@@ -184,10 +191,13 @@ def main():
     table = zhl16c()
 
     # Forcing is independent of R0 -> compute once.
-    print('Computing Buhlmann forcing (independent of R0)...')
+    print(f'Computing Buhlmann forcing ({args.ascent} ascent; independent of R0)...')
     forcing, prs = [], np.empty(len(df))
     for i, (_, r) in enumerate(df.iterrows()):
-        t, d = depth_profile(r.depth_fsw, r.bottom_time_min, r.ascent_time_min)
+        if args.ascent == 'staged':
+            t, d = staged_profile(r.depth_fsw, r.bottom_time_min, r.ascent_time_min, table)
+        else:
+            t, d = depth_profile(r.depth_fsw, r.bottom_time_min, r.ascent_time_min)
         Pt, Pa, ratio = buhlmann(t, d, table)
         forcing.append((t, Pt, Pa))
         prs[i] = ratio
@@ -296,16 +306,59 @@ def main():
                      and betas.mean() > 0 and (d.mean() > null).mean() >= 0.95)
         print(f'    VERDICT: {"adds out-of-sample signal" if real_lift else "NO reliable lift"}')
 
+    # ── ablation: is the physics pipeline better than three raw numbers? ─────
+    # A "lift" over a baseline that is itself anti-predictive is not signal. Always
+    # report the naive baseline alongside.
+    print('\n' + '='*72)
+    print('ABLATION — grouped repeated CV AUC (a feature only earns its place here)')
+    print('='*72)
+    rmax = np.array([bubble_rmax(t, Pt, Pa, R0_hat) for (t, Pt, Pa) in forcing])
+    ok = np.isfinite(rmax) & (rmax > 0)
+    lr = np.log(rmax[ok] / R0_hat)
+    raw = df[['depth_fsw', 'bottom_time_min', 'ascent_time_min']].values[ok]
+    yk, gk = y[ok], groups[ok]
+
+    def cv_auc(X, n_rep=10, seed=0):
+        rng = np.random.RandomState(seed)
+        uniq = np.unique(gk)
+        out = []
+        for _ in range(n_rep):
+            gmap = {g: i for i, g in enumerate(rng.permutation(uniq))}
+            gi = np.array([gmap[g] for g in gk])
+            for tr, te in GroupKFold(n_splits=5).split(X, yk, gi):
+                if len(np.unique(yk[te])) < 2:
+                    continue
+                mu, sd = X[tr].mean(0), X[tr].std(0) + 1e-30
+                bb, _ = fit_logistic((X[tr]-mu)/sd, yk[tr])
+                s = np.column_stack([np.ones(len(te)), (X[te]-mu)/sd]) @ bb
+                out.append(roc_auc_score(yk[te], s))
+        return np.array(out)
+
+    models = {
+        'raw (depth, bottom_time, ascent_time)': raw,
+        'prs alone (Buhlmann M-value ratio)':    prs[ok][:, None],
+        f'prs + log R_max  (R0={R0_hat*1e6:.1f}um)':  np.column_stack([prs[ok], lr]),
+        'raw + prs + log R_max (everything)':    np.column_stack([raw, prs[ok], lr]),
+    }
+    for name, X in models.items():
+        A = cv_auc(X)
+        flag = '  <-- WORSE THAN CHANCE' if A.mean() < 0.5 else ''
+        print(f'  {name:40s} AUC {A.mean():.4f} +/- {A.std():.4f}{flag}')
+    print('\n  If `prs alone` is at or below 0.5, any "lift" from adding a bubble term is')
+    print('  repairing a broken baseline, not contributing physics. Compare to `raw`.')
+
     print('\n' + '-'*72)
     print('Caveats. (1) Absolute DCS rate (~16%) reflects Navy trials designed to provoke')
     print('DCS plus partial negative extraction (2,700 of 8,578 dives); not a population')
     print('rate, so only relative discrimination is meaningful. (2) Air assumed for every')
     print('dive; the report also covers nitrogen-oxygen. (3) No per-diver covariates exist')
-    print('in this file. (4) Profiles are reconstructed from three scalars with a LINEAR')
-    print('ascent -- real ascents were staged decompression, so supersaturation is likely')
-    print('overstated and Buhlmann discrimination understated (AUC ~0.60 here).')
-    print('(5) Trials differ in protocol aggressiveness; grouping by data_set controls')
-    print('leakage but not confounding.')
+    print(f'in this file. (4) Profiles are reconstructed from THREE SCALARS ({args.ascent}')
+    print('ascent). Validated against the 428 real depth-time curves: staged is closer')
+    print('(median RMSE 36 vs 49 fsw, better on 83% of dives) but still beats a')
+    print('predict-the-mean baseline on only 44% -- reconstruction error is large, and')
+    print('conclusions about prs FLIP between the two reconstructions. (5) Trials differ')
+    print('in protocol aggressiveness; grouping by data_set controls leakage, not')
+    print('confounding -- note prs is anti-predictive across trials under staged ascent.')
 
 
 if __name__ == '__main__':
