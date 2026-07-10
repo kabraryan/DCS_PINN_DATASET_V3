@@ -5,9 +5,11 @@ from typing import Dict
 
 from benchmark.algorithms.base import Algorithm, AlgorithmError
 from benchmark.algorithms.zhl16c import ZHL16C
+from benchmark.algorithms.zhl16c_gf import ZHL16CGF
 
 REGISTRY: Dict[str, Algorithm] = {
     "zhl16c": ZHL16C(),
+    "zhl16c_gf": ZHL16CGF(),
 }
 
 __all__ = ["REGISTRY", "Algorithm", "AlgorithmError"]
