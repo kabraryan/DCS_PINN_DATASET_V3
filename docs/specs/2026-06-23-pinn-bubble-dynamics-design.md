@@ -336,6 +336,12 @@ with a confidence interval, and turns "do bubble features add signal?" into a fa
 question. (Note that `dcs_real_cases.csv`, despite having full depth–time curves, is
 **positives-only** — all 428 rows have `outcome = 1.0` — and cannot support a risk fit.)
 
+> **That fit was performed. See Correction 13.** `R₀` does not identify — the profile
+> likelihood is bimodal with modes of opposite coefficient sign — and the bubble feature adds
+> no out-of-sample discrimination over Bühlmann, under either profile reconstruction. Option 1
+> is still the only *non-degenerate* nucleation model, but the real data declines to endorse
+> the bubble layer it would enable.
+
 #### Caveats on these measurements
 
 - The skin is modelled here as a **hard floor** (`R` cannot fall below `R₀`). True VPM has a
@@ -344,6 +350,115 @@ question. (Note that `dcs_real_cases.csv`, despite having full depth–time curv
 - All figures assume `σ = 0.050 N/m`. The dead/alive classification is insensitive to `σ`
   (undersaturation kills free bubbles at any `σ`), but the growth rates are not.
 - Reproduce with: `python scripts/verify_nucleation_options.py`
+
+### Correction 13 — R₀ fitted to real outcomes: the bubble layer earns nothing
+
+Correction 12 concluded that if unmeasurable skin parameters must be introduced, they should
+be **fitted** to the 2,700 real dives in `FINAL DIVE/datasets/real/dcs_all_dives.csv` (1,932
+real non-DCS controls) rather than chosen by hand. That was done. The result is negative.
+
+Reproduce:
+```
+python scripts/fit_r0_to_real_dives.py --ascent staged --marginal exclude
+python scripts/validate_reconstruction.py
+```
+
+#### Setup
+
+2,230 bounce dives (470 multi-day air-saturation exposures and >300 fsw excursions excluded —
+a different physiological regime, not representable by a single-nucleus bounce model; the
+exclusion is outcome-correlated, 24.3% vs 13.7% DCS, and is reported rather than hidden).
+Profiles reconstructed from `(depth_fsw, bottom_time_min, ascent_time_min)`. Bühlmann ZHL-16C
+on air. EP with the VPM skin of Correction 12 at each candidate `R₀`. `R₀` estimated by
+profile likelihood on `outcome ~ prs + log R_max`; discrimination measured by **repeated**
+GroupKFold over `data_set` (50 folds), a permutation null, and a sign check on the fitted
+coefficient.
+
+#### The profile reconstruction was validated against ground truth
+
+`dcs_real_cases.jsonl` carries **both** the three scalars and the true depth–time curve for
+428 dives, so a reconstruction can be scored with no outcome model in the loop. On 72
+flag-clean bounce dives:
+
+| Reconstruction | median RMSE (fsw) | closer to truth on |
+|---|---|---|
+| Linear ascent | 48.71 | 16.7% of dives |
+| **Staged ascent** (Bühlmann-ceiling stops, rescaled to the recorded ascent time) | **36.08** | **83.3%** (Wilcoxon p = 1.8×10⁻¹¹) |
+
+Staged is the more faithful reconstruction and is used for the headline result. But it beats a
+*predict-the-mean* baseline on only **44.4%** of dives (linear: 15.3%). **Three scalars do not
+determine a dive profile.** Hold that fact; it is the finding.
+
+The staged schedule rescales *stop* durations — never travel legs — so that total ascent
+equals each dive's recorded `ascent_time_min`. This is what stops the reconstruction from
+being circular: a dive whose recorded ascent is shorter than the schedule Bühlmann demands
+gets compressed stops and still violates M-values. The reconstruction supplies the *shape*;
+the data supplies the *duration*.
+
+#### The result, with the baseline it needs
+
+At the profile-likelihood MLE (`R₀` = 4.0 µm), grouped repeated CV:
+
+| Model | AUC |
+|---|---|
+| raw `(depth, bottom_time, ascent_time)` | **0.6429 ± 0.0640** |
+| `prs` alone (Bühlmann M-value ratio) | **0.3843 ± 0.0803** — worse than chance |
+| `prs` + `log R_max` (bubble) | 0.5067 ± 0.0706 |
+| raw + `prs` + `log R_max` (everything) | **0.6429 ± 0.1006** — identical to raw |
+
+Read without the baseline, the bubble term looks like a triumph: **+0.1224 AUC, 100% of 50
+folds improved, correct coefficient sign, beats 100% of permutations.** It is nothing of the
+kind. It is **repairing an anti-predictive baseline** and still landing at chance. Three raw
+numbers beat the entire physics pipeline, and adding `prs` and the bubble feature on top of
+them moves the AUC by exactly zero.
+
+#### The linear reconstruction gave a different — and also negative — answer
+
+| | `R₀` MLE | `prs` AUC (in-sample) | bubble ΔAUC (out-of-sample) |
+|---|---|---|---|
+| Linear ascent | 2.4–2.5 µm | 0.6004 | −0.0038 ± 0.0714 (p = 0.47) |
+| Staged ascent | 4.0 µm | 0.5392 | +0.1224 (an artefact — see above) |
+
+Under **linear**, at the literature `R₀` = 0.7 µm only 87 dives grow a bubble, and those are
+deep-short dives (199 fsw / 39 min) whose DCS rate is 9.2% against 16.0% for non-growers.
+`AUC(R_max)` = 0.489 — **inverted**. Repeated CV reported a `+0.0106` lift beating 100% of
+permutations, but the fitted coefficient was **negative**. A feature that helps with an
+inverted sign is a confound — a proxy for "deep short dive" — not the bubble mechanism.
+**The coefficient-sign check is the only thing that caught this**; a ΔAUC threshold plus a
+permutation null both called it a win.
+
+The profile likelihood is also **bimodal**, and the two modes disagree about physics:
+`R₀ ≈ 1.0 µm` gives β = −0.26 (bubbles → *less* DCS), `R₀ ≈ 2.4 µm` gives β = +0.42. A
+likelihood surface with two modes of opposite sign is not identifying a physical parameter.
+
+Stable across the marginal-outcome fork (`exclude` / `0.5→1` / `0.5→0`): no reliable lift in
+any of six configurations.
+
+#### What this establishes, and what it does not
+
+**Established.** Bubble features do not improve on Bühlmann tissue loading on real dive
+outcomes with real controls, under either reconstruction. V3's premise — that a bubble signal
+must be *injected* because V2's labels do not contain one — is not rescued by real data: when
+real data is asked whether that signal exists, it declines to say yes.
+
+**Not established, and this matters more.** `prs` itself is anti-predictive out of sample
+(0.384) while looking respectable in-sample (0.539). Its apparent usefulness reverses across
+trials *and* reverses between the two reconstructions. That is reconstruction error and
+trial-level confounding dominating, not physics. **The real data as extracted cannot
+adjudicate this question.** A conclusion that flips on an assumption we cannot pin down from
+three scalars per dive is not a conclusion about bubbles.
+
+#### The unlock
+
+Depth–time curves exist for the **428 positives only**. The 2,700-dive set that carries the
+1,932 real controls has three scalars per dive and nothing else. Recovering real curves for
+the negatives — Vol I key files, which the extraction pipeline covers only partially (2,700 of
+8,578 dives; many pages scanned upside-down) — would let both Bühlmann and EP be driven by
+real profiles on both classes, and would make this question answerable. That is bounded work
+on a pipeline that already exists, and it is worth more than any further modelling on the
+scalars.
+
+Until then, **no bubble-layer design should be justified by appeal to the real data.**
 
 ### Provenance discipline
 
@@ -724,9 +839,18 @@ An `ep_solve_failed` column is emitted so any residual failures are auditable af
 No decompression model is derived from first principles; all are semi-empirical and
 calibrated to real dive-trial outcomes. This dataset is entirely synthetic. A more elaborate
 bubble model makes it more **internally sophisticated**, not more **validated**. The bubble
-features and labels cannot be checked against real DCS outcomes without real dive logs. The
-bubble logistic coefficients are design parameters for a synthetic data-generating process,
-not estimates from a real-outcome study.
+logistic coefficients are design parameters for a synthetic data-generating process, not
+estimates from a real-outcome study.
+
+> **Amended 2026-07-09.** An earlier revision of this section claimed "the bubble features and
+> labels cannot be checked against real DCS outcomes without real dive logs." Real dive logs
+> exist in this workspace (`FINAL DIVE/datasets/real/`), and the check was run — see
+> Correction 13. It came back **negative**: bubble features do not improve on Bühlmann tissue
+> loading against real outcomes with real controls. The honest ceiling is therefore *lower*
+> than this section originally implied, not higher. The check was possible; it simply did not
+> support the bubble layer. Note further that `physics_risk_score` itself was anti-predictive
+> out of sample under the more faithful profile reconstruction, so the limiting factor is the
+> fidelity of the extracted real data, not the elaborateness of the model.
 
 The defensible framing is: **a physically-consistent, literature-calibrated synthetic
 benchmark for evaluating DCS-risk methods**. All scope claims should be limited accordingly.
