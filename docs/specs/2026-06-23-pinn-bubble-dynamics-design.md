@@ -334,6 +334,19 @@ changes this outcome.
 
 ### Correction 12 — the four-option menu in Correction 11 is wrong; only the skin works
 
+> **Amended 2026-07-09/07-10.** The original growth percentages in this correction were
+> computed with a solver bug (unbounded adaptive RK45 striding over the growth window;
+> discovered during benchmark Task 5). The **conclusion is unchanged** — options 2 and 3 are
+> degenerate, only the VPM skin grows a bubble — but the corrected OPT 1 growth fractions are
+> **higher**: `R₀ = 0.7 µm` gives **16.4%** (not 3.2%), 1.0 µm 35.6%, 2.0 µm 66.4%, 3.0 µm
+> 77.6% (`scripts/verify_nucleation_options.py`, fixed). One finding is *new and strengthens
+> the case against the bubble layer*: with a correct integrator the feature is a **binary
+> threshold** at every `R₀` — the bubble either never clears the Laplace barrier (stays at the
+> floor) or clears it and runs to the ceiling, with essentially nothing between, because once
+> past the barrier `2σ/R` collapses and growth self-accelerates. Enlarging `R₀` merely lowers
+> the threshold until *every* dive saturates the ceiling — degenerate again, now at the top.
+> There is no `R₀` at which `bubble_R_max` is a graded, informative feature.
+
 Correction 11 listed four candidate fixes as if they were interchangeable. They are not. All
 four were implemented and measured on 250 profiles from V2's seeded sampler
 (`scripts/verify_nucleation_options.py`). **Options 2 and 3 leave `bubble_R_max` exactly as
@@ -435,6 +448,18 @@ question. (Note that `dcs_real_cases.csv`, despite having full depth–time curv
 Correction 12 concluded that if unmeasurable skin parameters must be introduced, they should
 be **fitted** to the 2,700 real dives in `FINAL DIVE/datasets/real/dcs_all_dives.csv` (1,932
 real non-DCS controls) rather than chosen by hand. That was done. The result is negative.
+
+> **Amended 2026-07-10.** Re-run with the corrected EP solver (see Correction 12's amendment).
+> The **conclusion holds and strengthens**; two figures change. (1) `R₀` is now *even less*
+> identifiable: the 95% profile-likelihood CI spans the **entire grid [0.50, 5.00] µm**, not a
+> pair of opposite-sign modes — the likelihood is flat because the feature is a binary
+> threshold whose split shifts smoothly with `R₀`. (2) At the literature `R₀ = 0.7 µm` the
+> feature is still **inverted**: `AUC(R_max alone) = 0.4757`, fitted β = **−0.148** (wrong sign
+> for the mechanism), so despite a nominal +0.053 paired ΔAUC the verdict is unchanged — **no
+> reliable lift**, the feature is a proxy for "deep short dive". The numbers below marked with
+> the old values (0.489, bimodal ±0.26/±0.42, R₀ MLE 2.4) predate the solver fix; the corrected
+> equivalents are 0.4757, flat-unidentifiable, and no meaningful MLE. The prose conclusion of
+> this correction requires no change.
 
 Reproduce:
 ```
