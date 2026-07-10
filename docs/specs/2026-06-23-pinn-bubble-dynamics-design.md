@@ -8,6 +8,85 @@
 
 ---
 
+## Consolidated record of changes and fixes
+
+*Added 2026-07-10. Every row was verified by running code, not by reading. Each links to the
+correction that carries the evidence and the command that regenerates it.*
+
+### Verdict on the project as designed
+
+**V3 must not be generated.** The bubble model is degenerate (Correction 11), and even after
+repair, bubble features do not improve on Bühlmann against real dive outcomes with real controls
+(Correction 13). The founding premise — "there is no real dive-outcome data and none will be
+available" — was false; 2,700 real Navy dives with 1,932 non-DCS controls sit in
+`FINAL DIVE/datasets/real/`.
+
+### Physics and numerical defects
+
+| # | Defect | Status | Evidence |
+|---|---|---|---|
+| 10 | ZHL-16C compartment 16 `b = 0.8693` — compartment 7's value, copy-pasted. Correct: `0.9653` | **Fixed** in 4 generators, README, 2 docs, 1 test | Measured impact: 1,421/3,000 rows shift, max Δprs 0.0105, ~0.02% label flips |
+| 12 | `Δc` used molar solubility against a mass density — `dR/dt` inflated by exactly `1/M_N2 = 35.714×` | **Fixed** | Verified numerically |
+| 12 | `Radau` fails on **70%** of realistic profiles (18/60). Spec claimed `RK45` would fail | **Fixed** — `RK45` + terminal event, 60/60 at 1.6 ms | `verify_nucleation_options.py` |
+| 12 | Non-smooth `if R <= 0` guard destroyed the implicit Jacobian | **Fixed** — terminal event | |
+| 11 | **Bubble never grows.** `R_max ≡ R₀` on every profile (std 1.1×10⁻¹⁶); all six columns constant | **Unresolved — blocking** | 400 real profiles |
+| 12 | Enlarging `R₀` or seeding at ascent does **not** help (0.0% growth at 2, 5, 10 µm) | **Diagnosed** — only the VPM skin works | Gas leaves an undersaturated bubble regardless of radius |
+| 12 | Unbounded EP growth reaches 267–284 µm | Ceiling required | |
+| — | Silent `R_traj = full(R0)` fallback wrote fabricated min-risk physics into shipped rows and poisoned the scaler for all 50,000 | **Fixed** — `ep_solve_failed` column, hard abort > 1% | Failure correlates with the label |
+| — | `np.trapz` removed in NumPy 2.0 | **Fixed** — `np.trapezoid` | |
+| — | `bubble_scaler.pkl` — `joblib.load` is arbitrary code execution for 12 floats | **Fixed** — JSON; manifest and deps purged | |
+
+### Provenance and documentation defects
+
+| # | Defect | Status |
+|---|---|---|
+| 9 | The `.docx` reference states the V2 logistic as `−7.5 + 9.0·prs`; the running code is `−18.08 + 18.31·prs` | Documented; source is authoritative |
+| 9 | `fitness_level` and `hydration_status` are **double-counted** — in both the physics layer and the logistic | Documented as a known modelling choice |
+| 9 | Correction 9 itself claimed "the README reports 905". The README reports **490**, which is exactly what the CSV contains. The README was right | **Retracted** |
+| 9 | `DCS_V3_slope_edit_patch.md` claimed the CSV holds **696**. That number appears in **no file** in this project | **Retracted**; patch marked SUPERSEDED |
+| — | The correction documents written to fix documentation drift introduced two fresh fabricated statistics | **Root cause fixed** — see *Provenance discipline* |
+| 2 | "There is no real dive-outcome data and none will be available" | **False.** Annotated in `DCS_V3_correction_prompt.md` |
+
+### Validation defects
+
+| Defect | Status |
+|---|---|
+| `bubble_R_max > R₀` (strict) — `R₀` is the initial condition in `t_eval`, so this **always fails** | Fixed to `>=`, gated on `ep_solve_failed` |
+| Quartile-monotonicity checks are **tautologies** — labels are drawn with a positive coefficient on those very features | **Removed** |
+| Intercept calibration averages three separately-solved intercepts and misses the 55% anchor by 0.84 pp against a documented ±0.5 pp | Documented |
+| Tests were change-detectors: `test_table_compartment16` **asserted the bug** | Replaced with property tests (`b` strictly increasing, `a` strictly decreasing) |
+| No test asserted `std(bubble_R_max) > 0` — 15 lines that would have caught Correction 11 before 1,500 lines were built on it | Added as a guard; mandated in the benchmark plan |
+
+### What was learned against real data (Correction 13)
+
+| Finding | Number |
+|---|---|
+| `R₀` does not identify — profile likelihood is **bimodal with modes of opposite sign** | β = −0.26 at 1.0 µm; β = +0.42 at 2.4 µm |
+| At the literature `R₀` = 0.7 µm the bubble feature is **inverted** — a proxy for "deep short dive" | `AUC(R_max)` = 0.489; DCS 9.2% among growers vs 16.0% |
+| At the MLE the feature is 0.49-collinear with `prs` and adds **nothing** out of sample | ΔAUC −0.0038, p = 0.47 |
+| Under the **more faithful** staged reconstruction, `prs` is **anti-predictive** out of sample | AUC 0.3843 (in-sample 0.5392) |
+| Three raw numbers beat the entire physics pipeline; adding physics changes nothing | raw 0.6429; raw + prs + `R_max` 0.6429 |
+| The staged reconstruction is closer to truth, yet still beats predict-the-mean on only 44.4% | median RMSE 36.08 vs 48.71 fsw, p = 1.8×10⁻¹¹ |
+| Adding physics to the trained baseline makes every model **worse** | RF 0.7114 → 0.6870 |
+
+**The pattern underneath all of it.** Every defect above — the typo, the fabricated statistics,
+the failed solver, the bubble that could never grow, and two results that looked convincing and
+were empty — has one cause: *something plausible was written down and never executed*. Twice, a
+result cleared every check that existed and died to a check that did not yet exist (the
+coefficient-sign gate, and the raw baseline). The durable fix is not more review. It is that
+**a number which cannot be regenerated on demand does not get written down.**
+
+### Reproduce
+
+```
+python scripts/verify_nucleation_options.py       # Corrections 11, 12
+python scripts/fit_r0_to_real_dives.py --ascent staged --marginal exclude   # Correction 13
+python scripts/validate_reconstruction.py         # staged vs linear vs ground truth
+python scripts/train_baseline.py --features raw+physics                     # physics makes it worse
+```
+
+---
+
 ## Corrections Applied to Original Draft
 
 This document supersedes the original V3 spec. The original contained one fatal conceptual
