@@ -11,6 +11,18 @@ Three properties are load-bearing and each was learned the hard way:
    and never a non-smooth `if R <= 0` guard.
 
 deficit() returns None: Epstein-Plesset defines no ceiling.
+
+On r0_um = 0.7: this is the Yount VPM literature value, and it is chosen over the
+4.0 that an earlier fit produced -- that fit used a solver bug (unbounded adaptive
+RK45 striding over the growth window) and its optimum was an artifact. With the
+integrator corrected, the feature is a BINARY THRESHOLD at every r0: the bubble
+either never clears the Laplace barrier (stays at the floor r0) or clears it and
+runs to the ceiling, with essentially nothing in between (once past the barrier,
+2*sigma/R collapses and growth self-accelerates). Larger r0 just lowers the
+threshold until every dive saturates -- degenerate at the ceiling. 0.7 um gives
+the most balanced floor/ceiling split; even so, across real dives the split
+correlates NEGATIVELY with DCS (a proxy for "deep short dive"), which is why the
+benchmark does not expect this feature to reach SUPPORTED. See Corrections 12-13.
 """
 from __future__ import annotations
 
@@ -51,9 +63,26 @@ def _tissue_and_ambient(profile: Profile):
 
 def integrate_bubble(profile: Profile, r0_m: float, sigma: float = 0.050,
                      ceiling_m: float = 100e-6, rtol: float = 1e-6) -> np.ndarray:
-    """Bubble radius trajectory in metres. Skin floor at r0_m; ceiling at ceiling_m."""
+    """Bubble radius trajectory in metres. Skin floor at r0_m; ceiling at ceiling_m.
+
+    Two numerical facts make this correct rather than merely plausible:
+
+    - **max_step is bounded to the forcing grid.** The RHS reads P_tissue and P_amb
+      via np.interp on the profile's ~30 s grid, and the skin clamp makes dR/dt = 0
+      while the nucleus sits at the floor. An unbounded adaptive RK45 sees that flat
+      derivative, takes minutes-long steps, and strides clean over the window where
+      supersaturation turns positive -- returning R_max = R0 on dives that actually
+      grow (verified: a dive whose true R_max is 100 um reported 4.0 um, and refining
+      rtol to 1e-10 did NOT fix it, because it is a step-size problem, not a tolerance
+      one). Bounding max_step to the forcing resolution resolves that window.
+    - **A terminal event stops integration at the ceiling** instead of a discontinuous
+      derivative clamp. Once R clears the Laplace barrier, 2*sigma/R collapses and
+      growth is self-accelerating; the event fires cleanly and the trajectory is
+      padded at the ceiling for the remaining eval points.
+    """
     P_tissue, P_amb = _tissue_and_ambient(profile)
     ts = profile.t_min * 60.0
+    max_step = float(np.min(np.diff(ts)))         # bound to the forcing grid
 
     def rhs(t, y):
         R = max(y[0], r0_m)                       # VPM skin: cannot dissolve below R0
@@ -69,17 +98,25 @@ def integrate_bubble(profile: Profile, r0_m: float, sigma: float = 0.050,
         corr = 1.0 + R / np.sqrt(np.pi * D_N2 * max(t, 1e-10))
         return [D_N2 * dC / (rho_gas * R) * corr]
 
+    def _hit_ceiling(t, y):
+        return y[0] - ceiling_m
+    _hit_ceiling.terminal = True
+    _hit_ceiling.direction = 1
+
     sol = solve_ivp(rhs, (ts[0], ts[-1]), [r0_m], method="RK45", t_eval=ts,
-                    rtol=rtol, atol=1e-12)
-    if not sol.success or sol.y.shape[1] != len(ts):
+                    rtol=rtol, atol=1e-12, max_step=max_step, events=_hit_ceiling)
+    if not sol.success:
         raise AlgorithmError(f"ep_bubble: solve failed on {profile.dive_id}")
-    return np.clip(sol.y[0], r0_m, ceiling_m)
+    R = sol.y[0]
+    if len(R) < len(ts):                          # event terminated early at the ceiling
+        R = np.concatenate([R, np.full(len(ts) - len(R), ceiling_m)])
+    return np.clip(R, r0_m, ceiling_m)
 
 
 class EPBubble:
     name = "ep_bubble"
 
-    def __init__(self, r0_um: float = 4.0, sigma: float = 0.050,
+    def __init__(self, r0_um: float = 0.7, sigma: float = 0.050,
                  ceiling_um: float = 100.0):
         self.params: Dict[str, float] = {
             "r0_um": r0_um, "sigma": sigma, "ceiling_um": ceiling_um,
