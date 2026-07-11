@@ -377,15 +377,31 @@ That is precisely how `test_table_compartment16` came to guard the bug it should
    blank or a zero.
 4. The raw baseline reproduces at AUC 0.6419 ± 0.0547 and `logistic [raw]` delta `+0.0000`.
 5. Adding a hypothetical fifth algorithm requires exactly one new file and one registry line,
-   with no edit to `evaluate.py`. (Demonstrated by a trivial `constant` algorithm in tests,
-   which must score `NOT SUPPORTED`.)
+   with no edit to `evaluate.py`.
 
-### Expected result, stated in advance
+   > **Amended during implementation.** The original wording said this was "demonstrated by a
+   > trivial `constant` algorithm which must score `NOT SUPPORTED`." That is self-contradictory:
+   > a constant column has **zero variance**, which `assert_has_variance` raises on (a degenerate
+   > model is not a result — the guard that would have caught the original bubble bug). The
+   > extensibility demo is instead a `noise` algorithm — a deterministic hash of `dive_id` — which
+   > has variance, carries no signal, and correctly scores `NOT SUPPORTED`. A separate test asserts
+   > a `constant` column *raises*. The two cases are different and both are checked.
+
+### Expected result — recorded in advance, then confirmed
 
 Based on Corrections 12 and 13, the prediction is that **no algorithm reaches `SUPPORTED`**, and
 that `zhl16c` and `ep_bubble` land at `NOT SUPPORTED` or `RECONSTRUCTION-SENSITIVE`. Recording
 this before implementation is deliberate: it makes a "successful" benchmark run falsifiable
-rather than confirmatory. If an algorithm *does* reach `SUPPORTED`, that is a real finding and
+rather than confirmatory.
+
+> **Result (2026-07-10, committed `RESULTS.md`).** The prediction held. All five algorithm-metric
+> pairs scored **`NOT SUPPORTED`**: `zhl16c` (risk_index ΔAUC +0.0068, deficit −0.0083),
+> `zhl16c_gf` (+0.0010 / −0.0038), `ep_bubble` (risk_index −0.0002) — none clears the 0.03
+> magnitude gate against the raw 3-feature baseline (AUC 0.6425 ± 0.053). Controls healthy: label
+> shuffle 0.523 (≈0.5), leakage gap +0.044, `ep_bubble` 0 solver failures. This is an independent,
+> leak-proof confirmation of Correction 13's negative result.
+
+If an algorithm *does* reach `SUPPORTED`, that is a real finding and
 the first order of business is to attack it with the sign and permutation gates, not to publish
 it.
 
