@@ -216,6 +216,12 @@ def render_results(rows, controls, report, command, csv_path, failures) -> str:
     return "\n".join(lines)
 
 
+def _comparable(text: str) -> str:
+    """RESULTS.md content minus the volatile provenance lines (git sha, command)."""
+    return "\n".join(ln for ln in text.splitlines()
+                     if not ln.startswith("- git:") and not ln.startswith("- command:"))
+
+
 def main() -> int:
     argv = list(sys.argv)
     ap = argparse.ArgumentParser()
@@ -284,7 +290,13 @@ def main() -> int:
                           recorded_command(argv), args.csv, failures)
     out = Path(args.out)
     if args.check:
-        if not out.exists() or out.read_text() != text:
+        # Compare benchmark-relevant content only. The `- git:` line records the
+        # HEAD sha at generation, which advances on every later commit (even one
+        # that does not touch the benchmark), and the `- command:` line varies with
+        # how the check itself was invoked. Excluding both means --check flags a
+        # change in the RESULTS (verdicts, numbers, controls) -- what it exists to
+        # catch -- not a bookkeeping sha bump.
+        if not out.exists() or _comparable(out.read_text()) != _comparable(text):
             print(f"{out} is stale. Regenerate it.", file=sys.stderr)
             return 1
         print(f"{out} is current.")
