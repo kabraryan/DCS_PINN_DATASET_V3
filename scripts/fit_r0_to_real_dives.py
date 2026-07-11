@@ -43,10 +43,13 @@ warnings.filterwarnings('ignore')
 REAL_CSV = os.path.expanduser('~/Desktop/FINAL DIVE/datasets/real/dcs_all_dives.csv')
 
 # ── constants ────────────────────────────────────────────────────────────────
-FSW_TO_BAR = 0.030643          # 33.07 fsw = 1 atm
-P_SURFACE  = 1.01325           # bar
-F_N2_AIR   = 0.79
-DESCENT_FSW_PER_MIN = 60.0     # US Navy standard
+# Shared Bühlmann constants come from the single source of truth; only the
+# bubble-specific constants below are local. Duplicating the shared ones is how
+# compartment 16's b-coefficient once diverged across four files (Correction 10).
+from benchmark.buhlmann import (  # noqa: E402
+    DESCENT_FSW_PER_MIN, FSW_TO_BAR, F_N2_AIR, P_SURFACE, zhl16c_table,
+)
+
 SURFACE_WATCH_MIN   = 120.0    # bubbles keep growing after surfacing
 DT_MIN = 0.5
 
@@ -69,16 +72,8 @@ MAX_DEPTH_FSW, MAX_BOTTOM_MIN, MAX_ASCENT_MIN = 300.0, 300.0, 300.0
 
 
 def zhl16c():
-    return np.array([
-        [   4.0, 1.2599, 0.5050], [   8.0, 1.0000, 0.6514],
-        [  12.5, 0.8618, 0.7222], [  18.5, 0.7562, 0.7825],
-        [  27.0, 0.6200, 0.8126], [  38.3, 0.5043, 0.8434],
-        [  54.3, 0.4410, 0.8693], [  77.0, 0.4000, 0.8910],
-        [ 109.0, 0.3750, 0.9092], [ 146.0, 0.3500, 0.9222],
-        [ 187.0, 0.3295, 0.9319], [ 239.0, 0.3065, 0.9403],
-        [ 305.0, 0.2835, 0.9477], [ 390.0, 0.2610, 0.9544],
-        [ 498.0, 0.2480, 0.9602], [ 635.0, 0.2327, 0.9653],
-    ], dtype=np.float64)
+    """Thin wrapper over the shared table (single source of truth, Correction 10)."""
+    return zhl16c_table()
 
 
 def depth_profile(depth_fsw, bt_min, at_min):

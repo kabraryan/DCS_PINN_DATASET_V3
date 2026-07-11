@@ -23,20 +23,23 @@ pinned at 1.0, and the feature would carry no variance -- a circularity.
 """
 from __future__ import annotations
 
+import os
+import sys
+
 import numpy as np
 
-FSW_TO_BAR = 0.030643
-P_SURFACE  = 1.01325
-F_N2_AIR   = 0.79
-DESCENT_FSW_PER_MIN = 60.0
-ASCENT_FSW_PER_MIN  = 30.0
-STOP_INCREMENT_FSW  = 10.0
+# Shared Bühlmann primitives, single source of truth. Duplicating these locally is
+# how compartment 16's b-coefficient once diverged across four files (Correction 10).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from benchmark.buhlmann import (  # noqa: E402
+    ASCENT_FSW_PER_MIN, DESCENT_FSW_PER_MIN, FSW_TO_BAR, F_N2_AIR, P_SURFACE,
+    STOP_INCREMENT_FSW, haldane_step,
+)
+
 DT_MIN = 0.5
 MAX_STOP_ITERS = 20000
 
-
-def _step(P_t, P_alv, k, dt):
-    return P_alv + (P_t - P_alv) * np.exp(-k * dt)
+_step = haldane_step  # local alias; identical to benchmark.buhlmann.haldane_step
 
 
 def _ceiling_fsw(P_t, a, b):
