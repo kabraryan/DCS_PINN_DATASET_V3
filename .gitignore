@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Local session state and council review output
+.claude/
+
+# Generated dataset artefacts
+dive_profiles_features.csv
+dive_profiles_timeseries.npy
+dive_profiles_sample.png
+bubble_scaler.pkl
+
+# Benchmark content-addressed cache (derived; 100k+ JSON files, regenerated on demand)
+.benchmark_cache/
