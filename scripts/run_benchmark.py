@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import os
 import platform
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -30,7 +31,6 @@ from benchmark.profile import Dive, RECONSTRUCTIONS, reconstruct
 from benchmark.verdict import MARGINAL_RULES, PRIMARY_MARGINAL, verdict
 
 REAL_CSV = os.path.expanduser("~/Desktop/FINAL DIVE/datasets/real/dcs_all_dives.csv")
-RAW_COLS = ["depth_fsw", "bottom_time_min", "ascent_time_min"]
 MAX_BOUNCE = 300.0
 EP_FAILURE_ABORT_RATE = 0.01
 
@@ -139,7 +139,19 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def render_results(rows, controls, report, args, csv_path) -> str:
+def recorded_command(argv: List[str]) -> str:
+    """The exact invocation that reproduces this RESULTS.md.
+
+    Provenance must be copy-paste reproducible (Task 9's whole purpose): every
+    flag the user actually passed has to show up here. `--check` is the one
+    exception -- a RESULTS.md is produced by a generate run, never a check run,
+    so that token is stripped if present.
+    """
+    filtered = [a for a in argv if a != "--check"]
+    return "python " + shlex.join(filtered)
+
+
+def render_results(rows, controls, report, command, csv_path, failures) -> str:
     import scipy, sklearn
     lines = [
         "# Decompression Algorithm Benchmark — Results",
@@ -149,12 +161,22 @@ def render_results(rows, controls, report, args, csv_path) -> str:
         "",
         "## Provenance",
         "",
-        f"- command: `python scripts/run_benchmark.py --marginal {args.marginal} "
-        f"--repeats {args.repeats} --seed {args.seed}`",
+        f"- command: `{command}`",
         f"- git: `{_git_sha()}`",
         f"- input: `{csv_path}` sha256[:16] `{_sha256(csv_path)}`",
         f"- python {platform.python_version()}, numpy {np.__version__}, "
         f"scipy {scipy.__version__}, sklearn {sklearn.__version__}",
+    ]
+    if failures:
+        for algo_name, (failed, total) in failures.items():
+            if failed:
+                lines.append(
+                    f"- `{algo_name}`: {failed}/{total} dive-solves failed "
+                    f"(excluded from the affected columns, not silently kept as NaN)"
+                )
+    if not any(failed for failed, _ in failures.values()):
+        lines.append("- 0 solver failures")
+    lines += [
         "",
         "## Cohort",
         "",
@@ -195,6 +217,7 @@ def render_results(rows, controls, report, args, csv_path) -> str:
 
 
 def main() -> int:
+    argv = list(sys.argv)
     ap = argparse.ArgumentParser()
     ap.add_argument("--marginal", required=True,
                     choices=list(MARGINAL_RULES),
@@ -210,6 +233,7 @@ def main() -> int:
 
     cache_root = Path(args.cache)
     rows = []
+    failures: Dict[str, Tuple[int, int]] = {}
     for algo_name in args.algorithms:
         gates_by_metric: Dict[str, Dict[Tuple[str, str], object]] = {}
         for rule in MARGINAL_RULES:
@@ -218,12 +242,23 @@ def main() -> int:
                               for d in dives], float)
             for recon in RECONSTRUCTIONS:
                 cols = build_matrix(dives, recon, algo_name, cache_root)
+                n_failed = int(cols["n_failed"])
+                prev = failures.get(algo_name, (0, len(dives)))
+                failures[algo_name] = (max(prev[0], n_failed), len(dives))
                 for metric in ("risk_index", "deficit"):
                     col = cols[metric]
                     if col is None:
                         continue
-                    assert_has_variance(col, f"{algo_name}.{metric}")
-                    g = four_gate(X_raw, col, y, groups,
+                    # A tolerated AlgorithmError leaves NaN in the column. Drop those
+                    # rows here -- sklearn raises on NaN input, so an unfiltered NaN
+                    # would crash the whole run with an opaque error instead of a
+                    # report. The drop is per (algo, metric, recon, rule) because
+                    # different algorithms fail on different dives.
+                    finite = np.isfinite(col)
+                    col_f, Xr_f = col[finite], X_raw[finite]
+                    y_f, g_f = y[finite], groups[finite]
+                    assert_has_variance(col_f, f"{algo_name}.{metric}")
+                    g = four_gate(Xr_f, col_f, y_f, g_f,
                                   n_rep=args.repeats, seed=args.seed)
                     gates_by_metric.setdefault(metric, {})[(recon, rule)] = g
 
@@ -245,7 +280,8 @@ def main() -> int:
         "baseline_sd": float(base.std()),
     }
 
-    text = render_results(rows, controls, report, args, args.csv)
+    text = render_results(rows, controls, report,
+                          recorded_command(argv), args.csv, failures)
     out = Path(args.out)
     if args.check:
         if not out.exists() or out.read_text() != text:
