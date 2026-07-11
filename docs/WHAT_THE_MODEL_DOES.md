@@ -127,7 +127,7 @@ Test only on experiments the machine has never seen. Erases a fake 7-point head 
 
 ### It shuffles the answers
 Scramble who-got-hurt into random nonsense and re-run everything. A machine trained on nonsense
-**must** score 0.5 — a coin flip. Ours scores 0.507. That proves our ruler is straight, not
+**must** score 0.5 — a coin flip. Ours scores 0.52. That proves our ruler is straight, not
 bent.
 
 ### It checks the arrow points the right way

@@ -918,7 +918,7 @@ git commit -m "feat(benchmark): ZHL-16C with gradient factors (30/70)"
 
 **Interfaces:**
 - Consumes: `benchmark.profile.Profile`, `benchmark.buhlmann.*`.
-- Produces: `class EPBubble` with `params = {"r0_um": 4.0, "sigma": 0.050, "ceiling_um": 100.0}`; `risk_index` returns `R_max` in µm; `deficit` returns `None`. Registry key `"ep_bubble"`. Module constant `R_DISSOLVE_FRACTION = 0.1`.
+- Produces: `class EPBubble` with `params = {"r0_um": 0.7, "sigma": 0.050, "ceiling_um": 100.0}` (r0_um corrected from a 4.0 draft — see the `__init__` note below); `risk_index` returns `R_max` in µm; `deficit` returns `None`. Registry key `"ep_bubble"`. Module constant `R_DISSOLVE_FRACTION = 0.1`.
 
 **Physics constraints (all from Corrections 11–13):**
 - Units: `ΔC = ALPHA_N2 * M_N2 * (P_tissue − P_gas)` (mass basis). Omitting `M_N2` inflates `dR/dt` by exactly `1/M_N2 = 35.714×`.
@@ -1082,8 +1082,10 @@ def integrate_bubble(profile: Profile, r0_m: float, sigma: float = 0.050,
 class EPBubble:
     name = "ep_bubble"
 
-    def __init__(self, r0_um: float = 4.0, sigma: float = 0.050,
-                 ceiling_um: float = 100.0):
+    def __init__(self, r0_um: float = 0.7, sigma: float = 0.050,
+                 ceiling_um: float = 100.0):   # r0_um: was 4.0 in the draft; corrected to the
+                 # Yount VPM literature value 0.7 after Task 5 found 4.0 was a buggy-solver
+                 # artifact (near-all-ceiling degenerate). See Correction 12/13 amendments.
         self.params: Dict[str, float] = {
             "r0_um": r0_um, "sigma": sigma, "ceiling_um": ceiling_um,
         }

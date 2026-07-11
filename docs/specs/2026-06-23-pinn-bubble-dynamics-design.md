@@ -59,11 +59,15 @@ available" — was false; 2,700 real Navy dives with 1,932 non-DCS controls sit 
 
 ### What was learned against real data (Correction 13)
 
+*(Bubble-feature rows corrected 2026-07-11 to the post-solver-fix values from
+`fit_r0_to_real_dives.py --ascent staged --marginal exclude`; see Correction 13's amendment.
+The pre-fix values — 0.489, bimodal β ±0.26/±0.42, MLE 2.4 µm — are superseded.)*
+
 | Finding | Number |
 |---|---|
-| `R₀` does not identify — profile likelihood is **bimodal with modes of opposite sign** | β = −0.26 at 1.0 µm; β = +0.42 at 2.4 µm |
-| At the literature `R₀` = 0.7 µm the bubble feature is **inverted** — a proxy for "deep short dive" | `AUC(R_max)` = 0.489; DCS 9.2% among growers vs 16.0% |
-| At the MLE the feature is 0.49-collinear with `prs` and adds **nothing** out of sample | ΔAUC −0.0038, p = 0.47 |
+| `R₀` does not identify — profile likelihood is **flat/unidentifiable** | 95% CI spans the entire tested grid [0.5, 5.0] µm |
+| At the literature `R₀` = 0.7 µm the bubble feature is **inverted** — a proxy for "deep short dive" | `AUC(R_max)` = 0.4757; fitted β = −0.148 (wrong sign) |
+| No reliable out-of-sample lift over `prs` at any `R₀` | staged, exclude: paired ΔAUC positive but sign-inverted → NOT supported |
 | Under the **more faithful** staged reconstruction, `prs` is **anti-predictive** out of sample | AUC 0.3843 (in-sample 0.5392) |
 | Three raw numbers beat the entire physics pipeline; adding physics changes nothing | raw 0.6429; raw + prs + `R_max` 0.6429 |
 | The staged reconstruction is closer to truth, yet still beats predict-the-mean on only 44.4% | median RMSE 36.08 vs 48.71 fsw, p = 1.8×10⁻¹¹ |
@@ -360,7 +364,10 @@ constant as the unfixed spec.** Only the VPM skin produces a bubble that ever gr
 | **Opt 3** — `R₀` = 5 µm | **0.0%** | 0 | degenerate |
 | **Opt 3** — `R₀` = 10 µm | **0.0%** | 0 | degenerate |
 | **Opt 2 + 3** — `R₀` = 5 µm, seed at ascent | **0.0%** | 0 | degenerate |
-| **Opt 1** — VPM skin, `R₀` = 0.7 µm | 3.2% | 43.6 µm | **alive** |
+| **Opt 1** — VPM skin, `R₀` = 0.7 µm | 16.4% | 87.1 µm | **alive** |
+
+*(All numbers in this correction regenerated 2026-07-11 from `verify_nucleation_options.py`
+with the corrected solver; the pre-fix values 3.2% / 43.6 µm are superseded.)*
 
 #### Why a bigger seed cannot help
 
@@ -390,21 +397,25 @@ ever turns positive (t ≈ 14 min).
 With the skin in place, `R₀` controls both how often bubbles form and how much independent
 signal the feature carries:
 
-| `R₀` (with skin) | Grew | ρ(`bubble_R_max`, `physics_risk_score`) | Reading |
+| `R₀` (with skin, no ceiling) | Grew | ρ(`bubble_R_max`, `physics_risk_score`) | Reading |
 |---|---|---|---|
-| 0.7 µm (the Yount/VPM value) | 3.2% | **+0.29** | rare, and largely independent of `prs` |
-| 1.0 µm | 14.8% | +0.56 | |
-| 2.0 µm | 42.8% | +0.82 | too common; nearly redundant with `prs` |
-| 3.0 µm | 60.0% | +0.85 | |
+| 0.7 µm (the Yount/VPM value) | 16.4% | **+0.63** | already moderately collinear with `prs` |
+| 1.0 µm | 35.6% | +0.82 | |
+| 2.0 µm | 66.4% | +0.85 | common and nearly redundant with `prs` |
+| 3.0 µm | 77.6% | +0.85 | |
 
-The literature value `R₀ = 0.7 µm` is also the best-behaved: DCS is rare, so a ~3% bubble rate
-is plausible, and the **low** correlation with `physics_risk_score` means the feature carries
-information the Bühlmann layer does not already contain — which is the only reason to add a
-bubble layer at all. At `R₀ = 2 µm` the feature is 0.82-collinear with `prs` and adds nothing.
+The literature value `R₀ = 0.7 µm` is the *least* collinear of the four, but the corrected
+numbers overturn the earlier reading that it is "rare and independent." At 0.7 µm the bubble
+grows on **16.4%** of profiles — not rare — and correlates with `physics_risk_score` at
+**+0.63**, i.e. the feature is already substantially a restatement of the Bühlmann nitrogen
+load rather than independent of it. Larger `R₀` only makes it *more* collinear (ρ → +0.85),
+so there is **no `R₀` at which `bubble_R_max` is both non-degenerate and independent of `prs`.**
+This foreshadows Correction 13: even the best-behaved seed produces a feature that adds nothing
+the tissue-loading score does not already carry.
 
-This cuts against the intuition that a larger, "safer," more arbitrary seed is the conservative
-choice. It is neither conservative nor safe: it is degenerate without the skin, and redundant
-with it.
+This still cuts against the intuition that a larger, "safer," more arbitrary seed is the
+conservative choice — it is degenerate without the skin, and redundant with it — but the
+sharper point is that the collinearity is present *at every* `R₀`, including the literature one.
 
 #### The growth ceiling is a precondition, not an option
 
@@ -438,7 +449,7 @@ question. (Note that `dcs_real_cases.csv`, despite having full depth–time curv
 
 - The skin is modelled here as a **hard floor** (`R` cannot fall below `R₀`). True VPM has a
   *compressible* skin with a crushing pressure that permits partial shrinkage. The qualitative
-  conclusion (only the skin averts degeneracy) is robust; the exact 3.2% is not.
+  conclusion (only the skin averts degeneracy) is robust; the exact 16.4% is not.
 - All figures assume `σ = 0.050 N/m`. The dead/alive classification is insensitive to `σ`
   (undersaturation kills free bubbles at any `σ`), but the growth rates are not.
 - Reproduce with: `python scripts/verify_nucleation_options.py`
@@ -500,6 +511,15 @@ gets compressed stops and still violates M-values. The reconstruction supplies t
 the data supplies the *duration*.
 
 #### The result, with the baseline it needs
+
+> **This subsection is the original pre-solver-fix analysis** (linear MLE 2.4 µm, staged MLE
+> 4.0 µm, `AUC(R_max)` = 0.489, the `+0.1224` "artefact", the bimodal likelihood). All of it is
+> **superseded** by the amendment at the top of this correction: with the corrected solver `R₀`
+> is flat-unidentifiable (95% CI [0.5, 5.0] µm) and the feature is inverted (`AUC(R_max)` =
+> 0.4757, β = −0.148). The narrative below is retained because its *reasoning* still holds — a
+> sign-inverted feature is a confound, and the raw-3 baseline is unbeaten — but read the specific
+> numbers as historical. The prs/raw/reconstruction figures (0.6429, 0.3843, RMSE 36.08/48.71)
+> do **not** depend on the bubble solver and remain current.
 
 At the profile-likelihood MLE (`R₀` = 4.0 µm), grouped repeated CV:
 
