@@ -54,9 +54,25 @@ def test_risk_index_has_variance_over_20_real_profiles():
 
 
 def test_trajectory_stable_under_tolerance_refinement():
+    """Refining rtol must not move the trajectory. Tested at the PRODUCTION r0 (0.7 um)
+    on a growing dive, comparing the PRE-saturation trajectory point-by-point.
+
+    An earlier version compared .max() at r0=4 um, where every trajectory saturates
+    to exactly the ceiling -- so the relative difference was 0.0 unconditionally and
+    the test could not fail. That is the flavour of can't-fail test this project keeps
+    finding; here the pre-saturation points genuinely depend on step size.
+    """
     from benchmark.algorithms.ep_bubble import integrate_bubble
-    d = dive(depth=150.0, bt=50.0, at=10.0)
+    ceiling_m = 100e-6
+    d = dive(depth=220.0, bt=90.0, at=3.0)      # grows to the ceiling
     p = reconstruct(d, "staged")
-    coarse = integrate_bubble(p, r0_m=4e-6, rtol=1e-6)
-    fine = integrate_bubble(p, r0_m=4e-6, rtol=1e-8)
-    assert abs(coarse.max() - fine.max()) / fine.max() < 1e-3
+    coarse = integrate_bubble(p, r0_m=0.7e-6, rtol=1e-6)
+    fine = integrate_bubble(p, r0_m=0.7e-6, rtol=1e-8)
+
+    # Compare only the strictly-pre-ceiling portion: once either hits the ceiling the
+    # values are clamped equal and carry no information about step-size sensitivity.
+    below = (coarse < ceiling_m * 0.999) & (fine < ceiling_m * 0.999)
+    k = int(np.argmax(~below)) if (~below).any() else len(below)
+    assert k > 3, "expected a growing, non-degenerate pre-saturation trajectory"
+    rel = np.abs(coarse[:k] - fine[:k]) / np.maximum(fine[:k], 1e-12)
+    assert rel.max() < 1e-3, f"trajectory unstable under rtol refinement: {rel.max():.2e}"
