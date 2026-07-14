@@ -120,15 +120,82 @@ def test_app_emits_no_probability_claim():
 
     AUC is a ranking. The ~16% DCS rate comes from Navy trials designed to provoke
     DCS; a probability derived from it is meaningless for a real diver.
+
+    The first version of this test listed two exact phrasings and missed a bare
+    `P(DCS)` sitting in the chart legend -- the user found it on screen. Match the
+    token itself, anywhere it could reach a user's eye, not a list of sentences.
     """
     text = _html()
+
+    # Any P(DCS) that is not inside a source comment saying we don't emit one.
+    for m in re.finditer(r"P\(DCS\)", text):
+        line = text[text.rfind("\n", 0, m.start()) + 1 : text.find("\n", m.end())]
+        assert "never" in line or "NOT " in line or "not a" in line.lower(), (
+            f"a literal P(DCS) can reach the user here:\n    {line.strip()}"
+        )
+
     banned = [
         "chance of decompression sickness at",
         "MODELED P(DCS)",
         "probability of decompression sickness",
+        "modeled probability",
     ]
     for phrase in banned:
         assert phrase not in text, f"the app must not claim a probability: {phrase!r}"
+
+
+def test_app_bottom_time_excludes_descent_like_the_training_data():
+    """bottom_time is TIME AT DEPTH. The app must not count the descent into it.
+
+    benchmark/profile.py settles the semantics: _materialise() lays out
+    descent(desc_min) THEN bottom(bottom_time_min), and _load_to_bottom()
+    descends and THEN sits for bottom_time_min. Descent is separate.
+
+    The app first measured bottom time from t=0 -- i.e. including the descent --
+    and then fed that into its own loadToBottom(), which descends AGAIN. The
+    descent was counted twice, inflating the computed decompression obligation by
+    ~1.5 min on a 30 m dive (a 30m/25min dive that honoured its obligation exactly
+    still reported a 1.5-min deficit and got voided).
+
+    Caught by sweeping ascent time across the obligation and noticing the deficit
+    was not zero at the crossing point.
+    """
+    text = _html()
+    m = re.search(r"const bottom\s*=\s*Math\.max\(([^;]+)\)", text)
+    assert m, "could not find the app's bottom-time extraction"
+    expr = m.group(1)
+    assert "iArrive" in expr, (
+        f"bottom time is computed as `{expr.strip()}` -- it must subtract the time "
+        "of ARRIVING at the bottom, or the descent is counted twice (once here and "
+        "again inside loadToBottom) and the deco obligation is overstated"
+    )
+
+
+def test_dial_is_voided_on_a_decompression_violation():
+    """The dial must NOT show a reassuring rank on a dive that skips its deco.
+
+    Found in use: a 45 m / 18 min dive that skipped 19 of its 22.4 mandatory
+    decompression minutes -- Bühlmann loading 1.27x the surfacing limit, i.e.
+    genuinely bent -- still displayed "42nd percentile, MILDER THAN MOST NAVY
+    DIVES" on the headline dial. The refusal existed, but only in the assessment
+    text below the fold. A reassuring headline on a bent dive is worse than no
+    number at all.
+
+    The model's rank is only meaningful inside the world it was trained on, where
+    every diver followed their schedule. Break the schedule and the rank is void.
+    """
+    text = _html()
+    assert "voided" in text, "the app must be able to void the model's rank"
+    assert "MODEL VOID" in text, "the voided dial must say so, in the band, unmissably"
+    assert "DECO VIOLATION" in text, "the voided dial must name the reason"
+    assert "ceilingViolationM" in text, (
+        "the app must detect a live ceiling violation mid-dive, not only on surfacing"
+    )
+    # the dial's value must fall back to the physics when voided
+    assert re.search(r"if\(voided\)\{[\s\S]{0,400}?currentStress\(\)", text), (
+        "when the model is voided the dial must fall back to Bühlmann loading, "
+        "which is still valid -- not keep showing the model's percentile"
+    )
 
 
 def test_ascent_coefficient_is_positive_so_the_obligation_guard_must_exist():
