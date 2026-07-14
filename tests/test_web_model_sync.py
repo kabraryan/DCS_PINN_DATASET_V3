@@ -171,30 +171,60 @@ def test_app_bottom_time_excludes_descent_like_the_training_data():
     )
 
 
-def test_dial_is_voided_on_a_decompression_violation():
-    """The dial must NOT show a reassuring rank on a dive that skips its deco.
+def test_violation_is_a_continuous_ceiling_audit_not_a_minutes_of_ascent_deficit():
+    """The rank must be withheld whenever the dive was physically over its ceiling
+    OR is out of the model's distribution -- judged by a CONTINUOUS audit of the
+    real trajectory, not by comparing ascent minutes to a square approximation.
 
-    Found in use: a 45 m / 18 min dive that skipped 19 of its 22.4 mandatory
-    decompression minutes -- Bühlmann loading 1.27x the surfacing limit, i.e.
-    genuinely bent -- still displayed "42nd percentile, MILDER THAN MOST NAVY
-    DIVES" on the headline dial. The refusal existed, but only in the assessment
-    text below the fold. A reassuring headline on a bent dive is worse than no
-    number at all.
+    Two bugs, both found by using the app:
+      1. A 45 m / 18 min dive at 1.27x still showed "MILDER" on the headline.
+      2. A multi-level sawtooth at 1.08x (five compartments over the limit) showed
+         "14th percentile, MILDER THAN MOST NAVY DIVES" and did not void. The
+         minutes-of-ascent deficit test called it compliant because the diver
+         spent the minutes at the wrong depths. The honest question is "were you
+         ever over your ceiling", checked continuously.
 
-    The model's rank is only meaningful inside the world it was trained on, where
-    every diver followed their schedule. Break the schedule and the rank is void.
+    An adversarial review then showed the surfacing-load snapshot is ALSO
+    insufficient (fast tissues off-gas before surfacing) and that the fix must
+    reach every surface, not just the dial.
     """
     text = _html()
-    assert "voided" in text, "the app must be able to void the model's rank"
-    assert "MODEL VOID" in text, "the voided dial must say so, in the band, unmissably"
-    assert "DECO VIOLATION" in text, "the voided dial must name the reason"
-    assert "ceilingViolationM" in text, (
-        "the app must detect a live ceiling violation mid-dive, not only on surfacing"
+    # the continuous audit and its verdict must exist
+    assert "auditProfile" in text, "the app must audit the whole profile, not a square approximation"
+    assert "maxOverM" in text and "CEIL_TOL_M" in text, (
+        "violation must be max_t(ceiling - depth) over the real trajectory, "
+        "with a tolerance that clears staged-deco discretization"
     )
-    # the dial's value must fall back to the physics when voided
+    assert "inDistribution" in text and "trustRank" in text, (
+        "the app must separately withhold the rank when the profile is out of "
+        "distribution (does not reduce to the 3 scalars the model reads)"
+    )
+    # the OLD broken predicate must be gone from the verdict
+    assert "deficit > 0.5" not in text and "deficit>0.5" not in text, (
+        "the minutes-of-ascent deficit must no longer decide violation -- it "
+        "passed the sawtooth that surfaced bent"
+    )
+    # the dial must fall back to the physics when voided
     assert re.search(r"if\(voided\)\{[\s\S]{0,400}?currentStress\(\)", text), (
-        "when the model is voided the dial must fall back to Bühlmann loading, "
-        "which is still valid -- not keep showing the model's percentile"
+        "a voided dial must show Bühlmann loading, not the model's percentile"
+    )
+    # every surface reads the SAME verdict -- definition + dial + scrub + headline
+    assert text.count("voidVerdict(") >= 4, (
+        "dial (done/edit), scrub, and the assessment headline must all read "
+        "voidVerdict -- the reported bug was the headline leaking the green rank "
+        "while the dial voided, and scrub reverting it in one click"
+    )
+    # scrub specifically must void -- it was a one-click bypass of the whole
+    # mitigation. Its branch must call voidVerdict on the completed dive.
+    scrub_branch = re.search(r"state==='scrub'[\s\S]{0,600}?\}", text)
+    assert scrub_branch and "voidVerdict(predict(points))" in scrub_branch.group(0), (
+        "the scrub branch must void on the completed dive's verdict, or scrubbing "
+        "a bent dive reveals the reassuring rank again"
+    )
+    # the headline must be gated: no unconditional aBig = ord(pct)
+    assert "big=ord(pctN)" in text and "if(v.voided)" in text, (
+        "the assessment headline must be gated on the void verdict, not set the "
+        "big percentile unconditionally"
     )
 
 

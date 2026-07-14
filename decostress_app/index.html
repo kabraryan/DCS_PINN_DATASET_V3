@@ -1587,6 +1587,85 @@ function realScore(sc){
    Also reports whether the diver actually HONOURED that obligation -- if they
    surfaced early, the dive is off the map (no Navy diver skipped their deco,
    so the model has never seen such a dive and must not be asked about it). */
+/* ---- profile audit: ONE continuous pass, read by every surface --------------
+
+   The bug this replaces: violation was judged by comparing ascent MINUTES to a
+   required obligation rebuilt from a square approximation. On a square dive that
+   coincides with the truth; on a sawtooth it diverges completely, so a dive that
+   surfaced bent (five compartments over the limit) was shown "MILDER THAN MOST
+   NAVY DIVES." The honest question is not "did you spend enough minutes
+   ascending" but "were you ever physically over your ceiling, and can the model
+   even see this dive."
+
+   Two facts, deliberately separate:
+     violated       -- a physical fact: max_t (ceiling - depth) over the REAL
+                       trajectory exceeded tolerance, OR you surfaced over the
+                       surfacing M-value. Checked continuously, not at the end;
+                       fast tissues that bust the ceiling at depth off-gas before
+                       you surface, so the surfacing snapshot alone lies.
+     inDistribution -- an epistemic fact: reducing this dive to (depth, bottom,
+                       ascent) loses no material physics, i.e. the real profile
+                       and the square the model implicitly assumes audit the same.
+                       If not, the 3-scalar rank is meaningless -- the model was
+                       fitted on square bounce dives and never saw this shape.
+
+   The rank may be shown only when inDistribution AND not violated.
+
+   CEIL_TOL clears the ~0.6 m transient overshoot that correctly-staged deco
+   dives incur from 10-fsw stop rounding; genuine breaches are >= 2 m. Ratio to
+   the surfacing M-value is only meaningful AT the surface, so the continuous
+   test is ceiling-minus-current-depth, never peak load ratio (which is ~1.4x on
+   every legitimate deco dive). GF is 1.0 -- the raw ZHL-16A table, the most
+   permissive line there is; treat the boundary as "at the edge," not "safe."   */
+const CEIL_TOL_M = 1.0;
+
+function walkAudit(poly){
+  let t=HALF.map(()=>inspN2(0)); const dt=0.02;
+  let maxOverM=-1e9, minutesOver=0, peakRate=0;
+  for(let i=1;i<poly.length;i++){
+    const A=poly[i-1], B=poly[i], span=B.t-A.t, steps=Math.max(1,Math.round(span/dt));
+    const rate=span>0?(A.d-B.d)/span:0; if(rate>peakRate) peakRate=rate;
+    for(let s=1;s<=steps;s++){
+      const dd=A.d+(B.d-A.d)*(s/steps), pi=inspN2(dd);
+      for(let c=0;c<NC;c++){ const k=1-Math.pow(2,-(span/steps)/HALF[c]); t[c]+=(pi-t[c])*k; }
+      const overM=(ceilingFsw(t) - dd*M_TO_FSW)/M_TO_FSW;   // metres above the ceiling
+      if(overM>maxOverM) maxOverM=overM;
+      if(overM>0) minutesOver += span/steps;
+    }
+  }
+  let st=0; for(let c=0;c<NC;c++){ const r=t[c]/mSurface(c); if(r>st) st=r; }
+  return {maxOverM, minutesOver, finalLoad:st, peakRate};
+}
+/* The square dive the 3-scalar model implicitly assumes: descend, sit at depth
+   for `bottom`, ascend linearly over the diver's ACTUAL ascent time. */
+function squareFromScalars(sc){
+  const dm=sc.maxDepthM, d0=Math.max(dm/18,0.3);
+  return [{t:0,d:0},{t:d0,d:dm},{t:d0+sc.bottom,d:dm},{t:d0+sc.bottom+sc.ascent,d:0}];
+}
+function auditProfile(poly){
+  const sc=diveScalars(poly);
+  if(!sc) return null;
+  const real=walkAudit(poly);
+  const square=walkAudit(squareFromScalars(sc));
+  const inDistribution = Math.abs(real.maxOverM - square.maxOverM) < 0.15
+                      && Math.abs(real.finalLoad - square.finalLoad) < 0.03;
+  /* Violation is ONE physical predicate: were you ever more than CEIL_TOL_M
+     above your ceiling on the real trajectory. A dive that surfaces bent was
+     necessarily over its ceiling near the surface, so this catches surface-bent
+     dives too -- without the false alarm that `finalLoad >= 1.0` would raise on
+     a correctly-staged deco dive, which surfaces AT the M-value limit (~1.02x)
+     by design. The reported sawtooth stays below CEIL_TOL_M (0.5 m over) but is
+     caught the other way: its shape does not survive the 3-scalar reduction, so
+     it is out of distribution and its rank is withheld regardless. */
+  const violated = real.maxOverM > CEIL_TOL_M;
+  return {
+    maxOverM:real.maxOverM, minutesOverCeiling:real.minutesOver,
+    finalLoad:real.finalLoad, peakAscentRate:real.peakRate,
+    overCeiling:violated, violated, inDistribution,
+    trustRank: inDistribution && !violated
+  };
+}
+
 function predict(poly){
   const sc=diveScalars(poly);
   if(!sc) return null;
@@ -1595,11 +1674,17 @@ function predict(poly){
   const scored={depthFsw:sc.depthFsw, bottom:sc.bottom, ascent:req.total};
   const score=realScore(scored);
   const deficit=req.total - sc.ascent;          // minutes of obligation skipped
+  const audit=auditProfile(poly);
   return {
     score, pct:percentileOf(score),
     depthFsw:sc.depthFsw, bottom:sc.bottom,
     requiredAscent:req.total, requiredStops:req.stop, actualAscent:sc.ascent,
-    deficit, violated: deficit > 0.5,
+    deficit,
+    // physical + epistemic verdict from the continuous audit
+    maxOverM:audit.maxOverM, minutesOverCeiling:audit.minutesOverCeiling,
+    finalLoad:audit.finalLoad, overCeiling:audit.overCeiling,
+    surfacedBent:audit.surfacedBent, violated:audit.violated,
+    inDistribution:audit.inDistribution, trustRank:audit.trustRank,
     multilevel: sc.multilevel,
     drivers: realDrivers(scored),
     cohortRate: cohortDecileRate(percentileOf(score))
@@ -1645,7 +1730,25 @@ let dragMode=null, dragNode=-1, dragTargetDepth=0;
 let scrubP=null, scrubD=null;
 let lastMs=performance.now();
 let displayedP=0, targetP=0, lastBandKey='minimal', lastLiveBand='';
-let voided=false, voidReason='';   // model rank is void: dive is outside its training world
+let voided=false, voidReason='', voidBand='';   // model rank withheld: dive is bent or out of distribution
+
+/* One verdict from the profile audit, read by every surface. Physical danger
+   first (over the ceiling), then the epistemic one (the model can't see this
+   dive shape). Either withholds the rank -- a reassuring number the user acts
+   on is the failure mode, so both suppress it, with an honest reason. */
+function voidVerdict(r){
+  if(!r) return {voided:false, band:'', reason:''};
+  if(r.violated){
+    const mins = r.minutesOverCeiling>=0.05 ? ' for '+r.minutesOverCeiling.toFixed(1)+' min' : '';
+    return {voided:true, band:'⚠ OVER YOUR CEILING · MODEL VOID',
+            reason:'you were '+r.maxOverM.toFixed(1)+' m above your ceiling'+mins};
+  }
+  if(!r.inDistribution){
+    return {voided:true, band:'⚠ MODEL CAN’T SEE THIS DIVE',
+            reason:'this profile does not reduce to the three numbers the model reads, so its rank is meaningless'};
+  }
+  return {voided:false, band:'', reason:''};
+}
 let hinted=false, paused=false;
 let gameHot=false, gameFocused=false;
 let lastAssess=null;
@@ -1667,14 +1770,12 @@ function currentStress(){
   for(let c=0;c<NC;c++){ const r=tissue[c]/mSurface(c); if(r>st){st=r;li=c;} }
   return {st, li};
 }
-/* The real model's verdict on a whole profile: a percentile, never a P(DCS). */
-function riskFromProfile(poly){
-  const sc=diveScalars(poly);
-  if(!sc) return {pct:0, score:0, scalars:null, drivers:[], cohortRate:0};
-  const score=realScore(sc);
-  const pct=percentileOf(score);
-  return {pct, score, scalars:sc, drivers:realDrivers(sc), cohortRate:cohortDecileRate(pct)};
-}
+/* NOTE: an earlier riskFromProfile() lived here and fed the diver's CHOSEN
+   ascent time straight into realScore() -- the inverted path where a fast ascent
+   scores "safer." The whole obligation/audit architecture exists to prevent
+   exactly that, so this dead-but-loaded function was removed rather than left one
+   autocomplete from a call site. Score profiles through predict(), never the
+   raw scalars. */
 function simulatePolyline(poly){
   let t=HALF.map(()=>inspN2(0)); const dt=0.02;
   for(let i=1;i<poly.length;i++){
@@ -1795,8 +1896,6 @@ function ndlMinutes(){
   return best;
 }
 function dialFrac(p){ return Math.max(0,Math.min(1,p)); }   // percentile maps linearly
-const REF_PROFILE=[{t:0,d:0},{t:1.5,d:18},{t:40,d:18},{t:43,d:5},{t:46,d:5},{t:47,d:0}];
-function referencePct(){ return riskFromProfile(REF_PROFILE).pct; }
 
 /* ---- presets ---- */
 const PRESETS=[
@@ -1904,8 +2003,15 @@ function ceilingViolationM(){
 }
 function refreshValues(){
   let st,li,p,score,driver,tts=0;
-  voided=false; voidReason='';
-  if(state==='scrub' && scrubP!=null){ st=scrubStress; li=scrubLi; p=scrubP; score=scrubLogit; driver=scrubDriver; }
+  voided=false; voidReason=''; voidBand='';
+  if(state==='scrub' && scrubP!=null){
+    st=scrubStress; li=scrubLi; p=scrubP; score=scrubLogit; driver=scrubDriver;
+    /* Scrubbing a bent or unrankable dive must not reveal a reassuring number:
+       the completed dive's verdict governs the whole replay. This was a one-click
+       bypass of the entire mitigation before. */
+    const v=voidVerdict(predict(points));
+    voided=v.voided; voidBand=v.band; voidReason=v.reason;
+  }
   else{
     const cs=currentStress(); st=cs.st; li=cs.li;
     /* THE DIAL IS THE MODEL'S REAL PREDICTION -- but ONLY while the dive stays
@@ -1924,10 +2030,12 @@ function refreshValues(){
     driver = (r && r.drivers && r.drivers.length) ? r.drivers[0].name : '—';
 
     if(state==='done'||state==='edit'){
-      if(r && r.violated){ voided=true; voidReason='skipped '+r.deficit.toFixed(1)+' min of deco'; }
+      const v=voidVerdict(r);
+      voided=v.voided; voidBand=v.band; voidReason=v.reason;
     }else if(state==='diving'){
       const over=ceilingViolationM();
-      if(over>0.5){ voided=true; voidReason='you are '+over.toFixed(0)+' m above your ceiling'; }
+      if(over>0.5){ voided=true; voidBand='⚠ ABOVE YOUR CEILING · MODEL VOID';
+        voidReason='you are '+over.toFixed(0)+' m above your ceiling'; }
     }
   }
   targetP = voided ? Math.max(st/1.5,0) : p;   // voided -> the dial shows PHYSICS
@@ -1966,7 +2074,7 @@ function smooth(dtReal){
     const stress=currentStress().st;
     $('pct').innerHTML=stress.toFixed(2)+'<i>×</i>';
     col='#e2574c'; key='void';
-    band='⚠ DECO VIOLATION · MODEL VOID';
+    band=voidBand||'⚠ MODEL VOID';
     bg='rgba(226,87,76,.22)';
   }else{
     $('pct').innerHTML=Math.round(p*100)+'<i>th</i>';
@@ -2155,9 +2263,6 @@ function rerunEdit(){
 /* ---- assessment ---- */
 function hideAssessment(){ $('assess').classList.remove('show'); $('assessPlaceholder').style.display='block'; lastAssess=null; }
 function ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
-/* The two reckless/careful reference dives used to expose the model's inversion. */
-const CARE_PROFILE=[{t:0,d:0},{t:1.5,d:18},{t:40,d:18},{t:43,d:5},{t:46,d:5},{t:47,d:0}];
-const RECK_PROFILE=[{t:0,d:0},{t:2.2,d:40},{t:10,d:40},{t:11.3,d:0}];
 
 function showAssessment(stress, li){
   $('assessPlaceholder').style.display='none';
@@ -2166,61 +2271,76 @@ function showAssessment(stress, li){
   const r=predict(points);
   if(!r){ return; }
   const pctN=Math.round(r.pct*100);
+  const v=voidVerdict(r);
 
-  /* ---- HEADLINE: the model's real prediction ---- */
-  let col,band;
-  if(r.pct<0.34){col='var(--safe)';band='MILDER THAN MOST NAVY DIVES';}
-  else if(r.pct<0.67){col='var(--amber)';band='MID-RANGE FOR NAVY DIVES';}
-  else {col='var(--risk)';band='HARSHER THAN MOST NAVY DIVES';}
-  $('aBig').textContent=ord(pctN); $('aBig').style.color=col;
+  /* ---- HEADLINE ----
+     The reported bug lived HERE: this headline set the big green number and
+     "MILDER THAN MOST NAVY DIVES" straight from r.pct, with no gate, on a dive
+     that was over the ceiling. The dial voided; the largest number on the screen
+     did not. Now the same verdict governs both. */
+  let col,band,big;
+  if(v.voided){
+    big=r.finalLoad.toFixed(2)+'×'; col='var(--risk)';
+    band = r.violated ? 'OVER THE SURFACING LIMIT' : 'MODEL CAN’T SEE THIS DIVE';
+  }else{
+    big=ord(pctN);
+    if(r.pct<0.34){col='var(--safe)';band='MILDER THAN MOST NAVY DIVES';}
+    else if(r.pct<0.67){col='var(--amber)';band='MID-RANGE FOR NAVY DIVES';}
+    else {col='var(--risk)';band='HARSHER THAN MOST NAVY DIVES';}
+  }
+  $('aBig').textContent=big; $('aBig').style.color=col;
   const bd=$('aBand'); bd.textContent=band; bd.style.background='rgba(255,255,255,.06)'; bd.style.color=col; bd.style.marginBottom='0';
 
-  const obs=(r.cohortRate*100).toFixed(1);
-  $('aInterp').innerHTML=
-    'Your dive: <b>'+Math.round(r.depthFsw/M_TO_FSW)+' m</b> for <b>'+r.bottom.toFixed(0)+' min</b>. '+
-    'Bühlmann ZHL-16C says that earns a decompression obligation of <b>'+r.requiredAscent.toFixed(1)+' minutes</b>'+
-    (r.requiredStops>0.4 ? ' (including <b>'+r.requiredStops.toFixed(1)+' min</b> of mandatory stops)' : ' of travel, with no mandatory stops')+'.'+
-    '<br><br>The model — fitted to <b>'+RM.n.toLocaleString()+' real Navy dives</b>, '+RM.nDcs+' of which ended in decompression sickness — '+
-    'ranks that exposure at the <b>'+ord(pctN)+' percentile</b> of the dives it was trained on. '+
-    'Real dives in this band had an observed DCS rate of <b>'+obs+'%</b> — a fact about <i>Navy trials built to provoke DCS</i>, not a probability for you.'+
-    '<br><br><b>Why this is a real prediction and not a toy.</b> The model scores the <i>obligation the physics demands</i>, not an ascent time you picked. '+
-    'That is exactly how the training data was generated — Navy divers followed a prescribed schedule. So the number is monotonic: go deeper or stay longer and it rises, always. '+
-    'There is no fast-ascent trick that talks it down.'+
-    '<br><br>Its honest skill is <b>AUC '+RM.auc.toFixed(2)+' ± '+RM.aucSd.toFixed(2)+'</b> — shown one diver who got bent and one who didn\'t, it picks correctly '+
-    Math.round(RM.auc*100)+'% of the time. A coin flip is 50%. <b>This is weak.</b> Rank dives with it; never trust it with a life.';
+  if(v.voided){
+    $('aInterp').innerHTML=
+      'Your dive: <b>'+Math.round(r.depthFsw/M_TO_FSW)+' m</b> for <b>'+r.bottom.toFixed(0)+' min</b>. '+
+      'Bühlmann ZHL-16C puts peak tissue loading at <b>'+stress.toFixed(2)+'×</b> the surfacing limit, led by the <b>'+HALF[li]+'-minute</b> compartment.'+
+      '<br><br><b>The model is showing no rank for this dive, on purpose.</b> '+v.reason.charAt(0).toUpperCase()+v.reason.slice(1)+'. '+
+      'It was fitted on 1,948 square Navy bounce dives whose divers all followed their schedule; this dive is outside that world, and its positive ascent coefficient would happily call it <i>safer</i> than it is. '+
+      'The honest number here is the physics, not a percentile.';
+  }else{
+    const obs=(r.cohortRate*100).toFixed(1);
+    $('aInterp').innerHTML=
+      'Your dive: <b>'+Math.round(r.depthFsw/M_TO_FSW)+' m</b> for <b>'+r.bottom.toFixed(0)+' min</b>. '+
+      'Bühlmann ZHL-16C says that earns a decompression obligation of <b>'+r.requiredAscent.toFixed(1)+' minutes</b>'+
+      (r.requiredStops>0.4 ? ' (including <b>'+r.requiredStops.toFixed(1)+' min</b> of mandatory stops)' : ' of travel, with no mandatory stops')+'.'+
+      '<br><br>The model — fitted to <b>'+RM.n.toLocaleString()+' real Navy dives</b>, '+RM.nDcs+' of which ended in decompression sickness — '+
+      'ranks that exposure at the <b>'+ord(pctN)+' percentile</b> of the dives it was trained on. '+
+      'Real dives in this band had an observed DCS rate of <b>'+obs+'%</b> — a fact about <i>Navy trials built to provoke DCS</i>, not a probability for you.'+
+      '<br><br>Its honest skill is <b>AUC '+RM.auc.toFixed(2)+' ± '+RM.aucSd.toFixed(2)+'</b> — shown one diver who got bent and one who didn\'t, it picks correctly '+
+      Math.round(RM.auc*100)+'% of the time. A coin flip is 50%. <b>This is weak.</b> Rank dives with it; never trust it with a life.';
+  }
 
-  /* ---- Did the diver honour the obligation? The one thing the model CANNOT score. ---- */
+  /* ---- the detail box: name the actual failure ---- */
   let out='';
   if(r.violated){
     out+='<div class="finding">'+
-      '<div class="fhead">⚠ You surfaced '+r.deficit.toFixed(1)+' minutes early on your obligation</div>'+
-      '<p>The physics demanded <b>'+r.requiredAscent.toFixed(1)+' min</b> of ascent. You took <b>'+r.actualAscent.toFixed(1)+' min</b>. '+
-      'Bühlmann puts your peak tissue loading at <b>'+stress.toFixed(2)+'×</b> the surfacing limit'+
-      (stress>=1.0 ? ' — <b>above 1.0×, which means a compartment is carrying more nitrogen than the table permits at the surface.</b>' : '.')+
-      ' The leading compartment is the <b>'+HALF[li]+'-minute</b> one.</p>'+
-      '<p class="fbad"><b>The model cannot score this dive, and the rank above is not to be trusted for it.</b> '+
-      'Every diver in the 1,948-dive training set followed their prescribed schedule. A dive that skips the obligation is one the model '+
-      'has <i>never seen</i>. Asking it is pure extrapolation — and because its ascent-time coefficient is positive, it would happily call your '+
-      'short ascent <i>safer</i>. It is wrong. That is the trap, and this is the tool refusing to fall into it.</p>'+
-      '<p class="fmeta">This is the honest boundary of a data-driven model: it can only answer questions its data actually contains. '+
-      'Skipping deco is not one of them. For that, listen to the physics — you are over your ceiling.</p>'+
+      '<div class="fhead">⚠ You were '+r.maxOverM.toFixed(1)+' m above your ceiling'+(r.minutesOverCeiling>=0.05?' for '+r.minutesOverCeiling.toFixed(1)+' min':'')+'</div>'+
+      '<p>Bühlmann puts your peak tissue loading at <b>'+stress.toFixed(2)+'×</b> the surfacing limit'+
+      (r.finalLoad>=1.0 ? ' and you surfaced at <b>'+r.finalLoad.toFixed(2)+'×</b> — above 1.0×, carrying more nitrogen than the table permits at the surface.' : '; fast tissues that busted the ceiling at depth off-gassed before you surfaced, which is why the surfacing number alone looks calmer than the dive was.')+
+      ' Leading compartment: the <b>'+HALF[li]+'-minute</b> one.</p>'+
+      '<p class="fbad"><b>No rank is shown, because none is honest.</b> A dive that goes over its ceiling is one the model never saw — every diver in its training set stayed within theirs. Its positive ascent coefficient would call this dive <i>safer</i>. Listen to the physics: you are over your ceiling.</p>'+
+      '</div>';
+  }else if(!r.inDistribution){
+    out+='<div class="finding">'+
+      '<div class="fhead">⚠ The model can’t see this dive</div>'+
+      '<p>This profile does not reduce to the three numbers the model reads (max depth, bottom time, ascent). '+
+      'Its real tissue trajectory and the square dive those three numbers describe disagree, so any percentile would be about a different dive than the one you flew. '+
+      'Bühlmann loading peaked at <b>'+stress.toFixed(2)+'×</b>, led by the <b>'+HALF[li]+'-minute</b> compartment.</p>'+
+      '<p class="fmeta">The physics is still valid — a multi-level or sawtooth profile just isn’t something a 3-scalar model fitted on square bounce dives can rank.</p>'+
       '</div>';
   }else{
     out+='<div class="okbox">'+
-      '<div class="okhead">✓ Obligation honoured</div>'+
-      '<p>You took <b>'+r.actualAscent.toFixed(1)+' min</b> to surface against a required <b>'+r.requiredAscent.toFixed(1)+' min</b>. '+
-      'Peak Bühlmann loading <b>'+stress.toFixed(2)+'×</b> the surfacing limit, led by the <b>'+HALF[li]+'-minute</b> compartment. '+
-      'Because you followed the schedule, this dive looks like the ones the model was trained on — so the rank above is a prediction it is actually entitled to make.</p>'+
+      '<div class="okhead">✓ In distribution, within your ceiling</div>'+
+      '<p>Peak Bühlmann loading <b>'+stress.toFixed(2)+'×</b> the surfacing limit, led by the <b>'+HALF[li]+'-minute</b> compartment, and the dive stayed within its ceiling. '+
+      'It reduces cleanly to the three numbers the model reads, so the rank above is a prediction it is actually entitled to make.</p>'+
       '</div>';
+    out+='<b>What moved the ranking (standardised log-odds):</b><br>'+
+      r.drivers.filter(d=>Math.abs(d.z)>0.001).map(d=>
+        (d.z>=0?'▲ ':'▼ ')+(d.name==='ascent time'?'deco obligation':d.name)+': <b>'+(d.z>=0?'+':'−')+Math.abs(d.z).toFixed(3)+'</b>').join('<br>')+
+      '<br><span style="color:var(--muted)">The obligation dominates (coefficient +0.54) — the model\'s summary of how provocative the dive was. '+
+      'Max depth on its own barely registers (+0.007), which is not what most divers expect.</span>';
   }
-
-  /* ---- what moved it ---- */
-  out+='<b>What moved the ranking (standardised log-odds):</b><br>'+
-    r.drivers.filter(d=>Math.abs(d.z)>0.001).map(d=>
-      (d.z>=0?'▲ ':'▼ ')+(d.name==='ascent time'?'deco obligation':d.name)+': <b>'+(d.z>=0?'+':'−')+Math.abs(d.z).toFixed(3)+'</b>').join('<br>')+
-    '<br><span style="color:var(--muted)">The obligation dominates (coefficient +0.54) — it is the model\'s summary of how provocative the dive was. '+
-    'Max depth on its own barely registers (+0.007), which is not what most divers expect.</span>'+
-    (r.multilevel ? '<br><br><span style="color:var(--amber)"><b>⚠ Multi-level profile.</b> The model sees only three numbers, so it is throwing your profile\'s shape away. Treat this rank as rough.</span>' : '');
 
   $('aDrivers').innerHTML=out;
   lastAssess={p:r.pct,stress:stress,li:li};
