@@ -1,0 +1,2423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DecoStress · Decompression-risk explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#071a26; --card:#0e2a3a; --card2:#123344; --cyan:#1fc7d4; --cyan-dim:#12707a;
+    --ink:#dcecf2; --muted:#6b93a5; --line:#1c4257; --amber:#f2a63a; --risk:#e2574c; --safe:#2fbf9e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{color:var(--ink);font-family:'Sora',system-ui,sans-serif;min-height:100vh;position:relative;
+    background:
+      radial-gradient(1100px 720px at 12% -12%, rgba(31,199,212,.14), transparent 58%),
+      radial-gradient(1000px 700px at 112% 8%, rgba(47,191,158,.10), transparent 55%),
+      radial-gradient(900px 900px at 60% 118%, rgba(31,199,212,.07), transparent 60%),
+      linear-gradient(160deg,#061620,#08202e 55%,#061620);
+    background-attachment:fixed}
+  body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(340px 340px at 20% 30%, rgba(31,199,212,.16), transparent 70%),
+      radial-gradient(300px 300px at 82% 62%, rgba(47,191,158,.13), transparent 70%),
+      radial-gradient(260px 260px at 55% 88%, rgba(120,90,220,.08), transparent 70%);
+    filter:blur(20px)}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 30px}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  svg.ic{width:1em;height:1em;vertical-align:-.13em;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  nav{display:flex;justify-content:space-between;align-items:center;padding:20px 0;border-bottom:1px solid var(--line)}
+  .brand{font-weight:700;font-size:17px}.brand b{color:var(--cyan)}
+  .navlinks{display:flex;gap:26px;font-size:13px;color:var(--muted)}
+  .navright{display:flex;gap:12px;align-items:center}
+  .badge{background:rgba(242,166,58,.12);border:1px solid var(--amber);color:var(--amber);font-size:11px;padding:5px 12px;border-radius:20px;letter-spacing:.5px}
+  .pillbtn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:transparent;border:1px solid var(--line);
+    border-radius:20px;padding:5px 12px;cursor:pointer;font-family:inherit}
+  .pillbtn:hover{border-color:var(--cyan);color:var(--cyan)}
+  .pillbtn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  /* section tabs */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:6px;flex-wrap:wrap}
+  .tab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);font-family:inherit;
+    font-size:13.5px;font-weight:500;padding:13px 15px;cursor:pointer;margin-bottom:-1px}
+  .tab:hover{color:var(--ink)}
+  .tab.on{color:var(--cyan);border-bottom-color:var(--cyan)}
+  .tab:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .panel{display:none}
+  .panel.active{display:block}
+  .videowrap{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;
+    border:1px solid var(--line);background:#05080d;box-shadow:0 16px 44px rgba(0,0,0,.4)}
+  .videowrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .ovintro{max-width:760px;margin:16px auto 44px;color:#b9d2dc;font-size:13.5px;line-height:1.7;text-align:center}
+
+  .head{padding:34px 0 18px}
+  .eyebrow{font-size:12px;letter-spacing:2px;color:var(--cyan);margin-bottom:12px}
+  h1{font-size:33px;line-height:1.14;font-weight:700;letter-spacing:-.5px;max-width:720px;margin-bottom:12px}
+  .lede{color:var(--muted);font-size:15px;max-width:660px;line-height:1.55}
+
+  .app{display:grid;grid-template-columns:320px 1fr;gap:20px;padding-bottom:24px;align-items:start}
+  .card{background:linear-gradient(160deg,rgba(20,52,70,.58),rgba(11,34,48,.5));
+    backdrop-filter:blur(18px) saturate(135%);-webkit-backdrop-filter:blur(18px) saturate(135%);
+    border:1px solid rgba(158,205,224,.16);border-radius:16px;padding:22px;
+    box-shadow:0 10px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06)}
+  .card h2{font-size:12px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:16px;font-weight:600}
+  .hint{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:16px}
+  .hint b{color:var(--ink);font-weight:500}
+
+  .keys{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .keybtn{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:15px 8px;border:1px solid rgba(158,205,224,.16);
+    background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.02));color:var(--ink);border-radius:12px;font-family:inherit;cursor:pointer;user-select:none;
+    -webkit-user-select:none;touch-action:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);transition:transform .06s, background .12s, border-color .12s}
+  .keybtn .g{font-size:20px;line-height:1}
+  .keybtn span.t{font-size:13px;font-weight:500}
+  .keybtn i{font-size:10.5px;color:var(--muted);font-style:normal;font-family:'IBM Plex Mono',monospace}
+  .keybtn.active{border-color:var(--cyan);background:rgba(31,199,212,.16);color:var(--cyan);transform:translateY(1px)}
+  .keybtn.active i{color:var(--cyan)}
+  .keybtn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .keybtn.nudge{animation:nudge 1.15s ease-in-out infinite}
+  @keyframes nudge{0%,100%{box-shadow:0 0 0 0 rgba(31,199,212,0)}50%{box-shadow:0 0 0 5px rgba(31,199,212,.22);border-color:var(--cyan)}}
+
+  .minor{display:flex;gap:8px;margin-top:10px}
+  .minor button{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--muted);
+    font-size:12px;font-family:inherit;cursor:pointer;transition:.12s}
+  .minor button:hover{border-color:var(--cyan);color:var(--cyan)}
+  .minor button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  .presets{display:flex;flex-direction:column;gap:8px}
+  .preset{text-align:left;padding:10px 12px;border:1px solid rgba(158,205,224,.14);border-radius:10px;
+    background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.015));color:var(--ink);
+    font-family:inherit;font-size:12.5px;cursor:pointer;transition:.12s;line-height:1.4}
+  .preset:hover{border-color:var(--cyan)}
+  .preset:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .preset b{font-weight:600}.preset span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+
+  .divider{height:1px;background:var(--line);margin:20px 0}
+  .field{margin-bottom:14px}
+  .field label{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px}
+  .field label b{color:var(--cyan);font-weight:500}
+  input[type=range]{width:100%;-webkit-appearance:none;height:5px;border-radius:4px;background:var(--card2);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--cyan);cursor:pointer;box-shadow:0 0 10px rgba(31,199,212,.5)}
+  input[type=range]:focus-visible{outline:2px solid var(--cyan);outline-offset:4px}
+  .toggles{display:flex;gap:7px;flex-wrap:wrap}
+  .tog{flex:1;min-width:82px;text-align:center;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:12px;cursor:pointer;color:var(--muted);user-select:none;transition:.1s}
+  .tog.on{border-color:var(--cyan);color:var(--cyan);background:rgba(31,199,212,.08)}
+
+  /* input-mode switch */
+  .modeswitch{position:relative;display:grid;grid-template-columns:1fr 1fr;background:var(--card2);
+    border:1px solid var(--line);border-radius:11px;padding:4px;margin-bottom:14px}
+  .modeswitch .mslider{position:absolute;top:4px;left:4px;width:calc(50% - 4px);height:calc(100% - 8px);
+    background:rgba(31,199,212,.16);border:1px solid var(--cyan);border-radius:8px;transition:transform .2s ease}
+  .modeswitch.manual .mslider{transform:translateX(100%)}
+  .mopt{position:relative;z-index:1;background:transparent;border:0;color:var(--muted);font-family:inherit;
+    font-size:12.5px;font-weight:500;padding:9px;cursor:pointer;border-radius:8px}
+  .mopt.on{color:var(--cyan)}
+  .mopt:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  .mrow{display:flex;align-items:center;gap:8px}
+  .mrow input{width:64px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;
+    padding:9px 8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;text-align:center}
+  .mrow input:focus{outline:none;border-color:var(--cyan)}
+  .mrow .u{font-size:11px;color:var(--muted);width:22px}
+  .manualrows{font-size:11.5px;color:var(--muted);line-height:1.9;margin-bottom:8px;min-height:8px}
+  .manualrows .mchip{color:var(--cyan);display:block}
+  .mstep{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:14px;margin-bottom:10px}
+  .msteph{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+  .msteph b{color:var(--cyan)}
+  .msteph span{color:var(--muted);text-transform:none;letter-spacing:0;font-size:11.5px}
+  .mstep .mrow{margin-bottom:9px}
+  .mstep .mrow label{flex:1;font-size:12.5px;color:var(--ink)}
+  .mconfirm{width:100%;margin-top:6px;padding:10px;border-radius:9px;border:1px solid var(--cyan);
+    background:rgba(31,199,212,.14);color:var(--cyan);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .mconfirm:hover{background:rgba(31,199,212,.22)}
+  .mconfirm:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  .right{display:flex;flex-direction:column;gap:20px}
+  .cluster{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .gauge{position:relative;background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+    border:1px solid rgba(158,205,224,.14);border-radius:12px;padding:12px 14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+  .gauge .lab{font-size:10px;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;display:flex;align-items:center;gap:5px}
+  .gauge .q{margin-left:auto;width:14px;height:14px;border-radius:50%;border:1px solid var(--line);color:var(--muted);
+    font-size:9px;display:flex;align-items:center;justify-content:center;cursor:help;font-family:'IBM Plex Mono',monospace}
+  .gauge .big{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:25px;line-height:1.15;margin-top:6px}
+  .gauge .big small{font-size:13px;color:var(--muted);font-weight:400}
+  .gauge.asc .big{display:flex;align-items:center;gap:8px}
+  .arrowbox{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(47,191,158,.14);color:var(--safe);transition:.15s}
+  .arrowbox svg{width:16px;height:16px}
+
+  .stage{display:flex;gap:16px;align-items:stretch}
+  .watercol{position:relative;width:78px;flex:none;border-radius:12px;overflow:hidden;border:1px solid var(--line);
+    background:linear-gradient(180deg,#0b2c3d 0%,#0a2333 45%,#06161f 100%);min-height:290px}
+  .lightshaft{position:absolute;top:0;left:18%;width:44%;height:100%;
+    background:linear-gradient(180deg,rgba(31,199,212,.22),rgba(31,199,212,0) 70%);filter:blur(3px);pointer-events:none}
+  .surfline{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(180,235,245,.7);box-shadow:0 0 8px rgba(120,220,235,.6)}
+  .ruler{position:absolute;right:3px;top:0;bottom:0;width:22px;pointer-events:none}
+  .ruler div{position:absolute;right:0;font-size:8.5px;color:rgba(150,195,210,.6);font-family:'IBM Plex Mono',monospace;transform:translateY(-50%)}
+  .ruler div::before{content:"";position:absolute;right:20px;top:50%;width:6px;height:1px;background:rgba(150,195,210,.35)}
+  .diver{position:absolute;left:50%;top:0;width:22px;height:22px;margin-left:-11px;margin-top:-11px;color:#eaf7fb;
+    transition:none;filter:drop-shadow(0 0 6px rgba(31,199,212,.55))}
+  .diver svg{width:22px;height:22px;stroke-width:1.6}
+  .cbub{position:absolute;bottom:0;width:5px;height:5px;border-radius:50%;background:rgba(190,235,245,.5);pointer-events:none;animation:rise linear forwards}
+  @keyframes rise{to{transform:translateY(-320px);opacity:0}}
+
+  .chartwrap{flex:1;min-width:0}
+  .charthead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;gap:6px}
+  .charthead .now{font-size:12px;color:var(--muted)}
+  .charthead .now b{color:var(--ink);font-weight:500}
+  .pausechip{display:none;font-size:11px;color:var(--amber);border:1px solid var(--amber);border-radius:20px;padding:2px 9px;margin-left:6px}
+  .pausechip.show{display:inline-block}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;cursor:grab;touch-action:none}
+  canvas.grabbing{cursor:grabbing}
+  .log{margin-top:12px;font-size:12.5px;color:var(--muted);min-height:18px;line-height:1.6}
+  .log span{color:var(--cyan)}
+  .postbar{display:none;gap:8px;margin-top:12px}
+  .postbar.show{display:flex}
+  .postbar button{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--ink);
+    font-size:12px;font-family:inherit;cursor:pointer}
+  .postbar button:hover{border-color:var(--cyan);color:var(--cyan)}
+  .postbar button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(31,199,212,.1)}
+  .postbar button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  .riskrow{display:grid;grid-template-columns:210px 1fr;gap:24px;align-items:center}
+  .dialwrap{position:relative;width:200px;height:200px;margin:0 auto}
+  .dialwrap.pulse{animation:pulse .5s ease}
+  @keyframes pulse{0%{filter:drop-shadow(0 0 0 rgba(255,255,255,0))}40%{filter:drop-shadow(0 0 14px rgba(255,255,255,.28))}100%{filter:drop-shadow(0 0 0 rgba(255,255,255,0))}}
+  .dialwrap .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  .dialwrap .val .num{font-size:38px;font-weight:700;line-height:1;font-family:'IBM Plex Mono',monospace}
+  .dialwrap .val .num i{font-size:19px;font-style:normal;color:var(--muted)}
+  .dialwrap .val .lbl{font-size:9.5px;color:var(--muted);letter-spacing:2px;margin-top:5px}
+  .band{display:inline-block;font-size:12px;font-weight:600;padding:5px 14px;border-radius:20px;margin-bottom:14px}
+  .drivers{width:100%;font-size:12.5px}
+  .drivers .row{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);color:var(--muted)}
+  .drivers .row b{color:var(--ink);font-weight:500}
+
+  .comps{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+  .comp{display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;font-size:11px;color:var(--muted)}
+  .comp .cl{font-family:'IBM Plex Mono',monospace}
+  .comptrack{position:relative;height:12px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(158,205,224,.12);overflow:hidden}
+  .compfill{position:absolute;left:0;top:0;bottom:0;border-radius:6px 0 0 6px;background:var(--safe);transition:width .08s linear, background .2s}
+  .complim{position:absolute;top:-2px;bottom:-2px;width:2px;background:rgba(226,87,76,.75)}
+  .comp .cv{font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--ink)}
+  .compnote{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .compnote b{color:var(--ink);font-weight:500}
+
+  .assess{display:none}
+  .assess.show{display:block}
+  .assess .atop{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .assess .abig{font-size:30px;font-weight:700;font-family:'IBM Plex Mono',monospace}
+  .assess p{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px}
+  .assess p b{color:var(--ink);font-weight:500}
+  .assess .dl{font-size:12px;color:var(--muted);line-height:1.9}
+  .assess .dl b{color:var(--ink);font-weight:500}
+  .placeholder{font-size:13px;color:var(--muted);line-height:1.6}
+
+  .explain{padding-bottom:60px}
+  .explain h2{font-size:20px;font-weight:700;margin:26px 0 10px}
+  .explain h3{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--cyan);margin-bottom:10px;font-weight:600}
+  .explain p{font-size:14px;color:#b9d2dc;line-height:1.7;margin-bottom:12px;max-width:820px}
+  .explain p b{color:var(--ink);font-weight:600}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+
+  .dcsgrid{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:18px;align-items:center;margin:18px 0 10px}
+  .dcscol{display:flex;flex-direction:column;gap:14px}
+  .dcscard{background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.015));
+    border:1px solid rgba(158,205,224,.14);border-radius:12px;padding:13px 15px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+  .dcscard h4{font-size:12.5px;color:var(--cyan);margin-bottom:5px;font-weight:600}
+  .dcscard p{font-size:12px!important;color:#b3cdd8;line-height:1.55;margin:0!important;max-width:none}
+  .diver3dwrap{position:relative;min-height:440px;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+    background:radial-gradient(circle at 50% 42%, rgba(31,199,212,.12), rgba(7,26,38,0) 68%)}
+  .diver3dwrap canvas{position:absolute;inset:0;display:block}
+  .dcshint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:11px;color:var(--muted);pointer-events:none;letter-spacing:.5px;z-index:2}
+  .diverfallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
+    color:var(--muted);font-size:12.5px;padding:24px;line-height:1.6}
+
+  .cmpwrap{overflow-x:auto;margin:14px 0 6px}
+  .cmp{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px}
+  .cmp th,.cmp td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}
+  .cmp thead th{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .cmp thead th.mine{color:var(--cyan)}
+  .cmp td.asp{color:var(--ink);font-weight:600;width:150px}
+  .cmp tbody td{color:#b3cdd8}
+  .cmp tbody tr:hover{background:rgba(255,255,255,.02)}
+  .cmp .pro{color:var(--safe);font-weight:600}
+  .cmp .con{color:var(--risk);font-weight:600}
+
+  /* Obligation honoured: the dive is in-distribution and the model may speak. */
+  .okbox{border:1px solid rgba(47,191,158,.35);background:rgba(47,191,158,.06);
+    border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .okbox .okhead{font-size:12px;font-weight:700;color:var(--safe);letter-spacing:.3px;margin-bottom:6px}
+  .okbox p{font-size:12px!important;color:#c8d6dc;line-height:1.6;margin:0!important;max-width:none}
+  /* The finding panel: the fitted model's inversion, shown rather than asserted. */
+  .finding{border:1px solid rgba(226,87,76,.35);background:rgba(226,87,76,.05);
+    border-radius:12px;padding:14px 16px;margin-top:4px}
+  .finding .fhead{font-size:12px;font-weight:700;color:var(--risk);letter-spacing:.3px;margin-bottom:9px}
+  .finding p{font-size:12px!important;color:#c8d6dc;line-height:1.6;margin:0 0 9px!important;max-width:none}
+  .finding .ftab{width:100%;border-collapse:collapse;margin:10px 0 12px;font-size:12px}
+  .finding .ftab th{text-align:left;color:var(--muted);font-weight:600;font-size:10.5px;
+    text-transform:uppercase;letter-spacing:.5px;padding:0 0 6px;border-bottom:1px solid var(--line)}
+  .finding .ftab th:last-child,.finding .ftab td:last-child{text-align:right;white-space:nowrap}
+  .finding .ftab td{padding:7px 0;border-bottom:1px solid rgba(28,66,87,.5);color:#c8d6dc}
+  .finding .ftab td.pro{color:var(--safe);font-weight:700}
+  .finding .ftab td.con{color:var(--risk);font-weight:700}
+  .finding .fbad{background:rgba(226,87,76,.12);border-left:3px solid var(--risk);
+    padding:9px 11px;border-radius:0 7px 7px 0;color:#f0b8b3!important}
+  .finding .fmeta{font-size:11px!important;color:var(--muted)!important;border-top:1px solid var(--line);padding-top:9px;margin-bottom:0!important}
+  .finding .amb{color:var(--amber)}
+  /* Inert-controls block: the physiology factors the real data cannot speak to. */
+  .unvalidated{margin-top:16px;padding:14px;border-radius:12px;
+    border:1px dashed rgba(242,166,58,.45);background:rgba(242,166,58,.05)}
+  .unvalidated .uvhead{font-size:11.5px;font-weight:700;color:var(--amber);
+    letter-spacing:.3px;margin-bottom:8px}
+  .unvalidated p{font-size:11.5px!important;color:#c2b394;line-height:1.55;margin:0 0 8px!important;max-width:none}
+  .unvalidated .field{opacity:.55}
+  .unvalidated .field label{display:flex;align-items:center;gap:6px}
+  .uvtag{font-size:9px;letter-spacing:.6px;text-transform:uppercase;font-weight:700;
+    color:var(--amber);background:rgba(242,166,58,.14);border-radius:4px;padding:1px 5px}
+  .unvalidated .tog{cursor:not-allowed}
+  .disclaimer{background:rgba(226,87,76,.08);border:1px solid rgba(226,87,76,.35);border-radius:12px;padding:15px 18px;margin:22px 0 10px;font-size:12px;color:#f0b8b3;line-height:1.6;display:flex;gap:12px}
+  .disclaimer b{color:var(--risk)}
+  .disclaimer .ic{width:18px;height:18px;flex:none;color:var(--risk)}
+
+  .overlay{position:fixed;inset:0;background:rgba(4,14,20,.82);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:50;padding:24px}
+  .overlay.show{display:flex}
+  .modal{background:linear-gradient(160deg,rgba(22,54,72,.85),rgba(11,32,46,.82));
+    backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
+    border:1px solid rgba(158,205,224,.2);border-radius:18px;padding:30px;max-width:480px;width:100%;text-align:left;
+    box-shadow:0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08);animation:pop .35s ease}
+  @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
+  .modal h3{font-size:19px;margin-bottom:6px}
+  .modal .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .howstep{display:flex;gap:12px;margin-bottom:13px;font-size:13px;line-height:1.5}
+  .howstep .k{flex:none;width:26px;height:26px;border-radius:7px;background:rgba(31,199,212,.14);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:13px}
+  .howstep b{color:var(--ink);font-weight:600}.howstep span{color:var(--muted)}
+  .modal .actions{display:flex;justify-content:flex-end;margin-top:8px}
+  .modal .actions button{padding:11px 22px;border-radius:10px;border:1px solid var(--cyan);background:rgba(31,199,212,.12);color:var(--cyan);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
+  .modal .actions button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:5;box-shadow:inset 0 0 1px 1px rgba(0,0,0,0);transition:box-shadow .5s ease}
+
+  @media(max-width:920px){.app{grid-template-columns:1fr}.riskrow{grid-template-columns:1fr}.cols{grid-template-columns:1fr}
+    .dcsgrid{grid-template-columns:1fr}.diver3dwrap{min-height:340px;order:-1}
+    h1{font-size:26px}.navlinks{display:none}.cluster{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.wrap{padding:0 16px}.dialwrap{width:180px;height:180px}.watercol{width:60px}.stage{gap:10px}.gauge .big{font-size:21px}}
+</style>
+</head>
+<body>
+<div id="vignette"></div>
+<div id="riskLive" class="sr-only" aria-live="polite"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="i-diver"><circle cx="9" cy="6" r="2.4"/><path d="M6.5 11c1-1.2 4-1.2 5 0l3.5 4.5M8.5 11l-3.5 3M9 11v6"/></g>
+  <g id="i-down"><path d="M12 5v13M6 12l6 6 6-6"/></g>
+  <g id="i-up"><path d="M12 19V6M6 12l6-6 6 6"/></g>
+  <g id="i-hold"><path d="M5 12h14"/></g>
+  <g id="i-alert"><path d="M12 4l9 16H3zM12 10v5M12 17.5v.01"/></g>
+  <g id="i-clock"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></g>
+  <g id="i-depth"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/></g>
+  <g id="i-ndl"><circle cx="12" cy="12" r="8"/><path d="M12 6v6l4 2"/></g>
+</defs></svg>
+
+<div class="wrap">
+  <nav>
+    <div class="brand">Deco<b>Stress</b></div>
+    <div class="navlinks"></div>
+    <div class="navright">
+      <button class="pillbtn" id="helpBtn" aria-label="How to use">?<span>How to use</span></button>
+      <div class="badge mono">FITTED ON REAL DIVES · AUC 0.64 · NOT A DIVE PLANNER</div>
+    </div>
+  </nav>
+
+  <div class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab on" data-tab="overview" role="tab" aria-selected="true" id="tab-overview">Overview</button>
+    <button class="tab" data-tab="explorer" role="tab" aria-selected="false" id="tab-explorer">Risk explorer</button>
+    <button class="tab" data-tab="learn" role="tab" aria-selected="false" id="tab-learn">How it works</button>
+  </div>
+
+  <section class="panel active" id="p-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="head">
+      <div class="eyebrow mono">OVERVIEW</div>
+      <h1>What DecoStress is, in about a minute.</h1>
+      <p class="lede">A short animated walkthrough of the decompression-sickness model behind this explorer. Watch it here, then open the Risk explorer to test dive profiles yourself.</p>
+    </div>
+    <div class="videowrap"><iframe id="pitchFrame" title="DecoStress overview animation" loading="lazy"></iframe></div>
+    <p class="ovintro">This overview is a self-contained animation. The interactive tool is under <b>Risk explorer</b>; the model's mechanics and honest limitations are under <b>How it works</b>.</p>
+  </section>
+
+  <section class="panel" id="p-explorer" role="tabpanel" aria-labelledby="tab-explorer">
+  <div class="head" id="explorer">
+    <div class="eyebrow mono">DECOMPRESSION PHYSICS · AND ITS LIMITS</div>
+    <h1>See what drives decompression-sickness risk — one dive profile at a time.</h1>
+    <p class="lede">Build a dive, or load a preset. The real <b>Bühlmann ZHL-16C</b> table — all 16 compartments — tracks how much nitrogen each tissue takes on and how close it sits to its surfacing limit. Then we show you something uncomfortable: benchmarked against <b>1,948 real Navy dives with real outcomes</b>, that physics <b>does not predict who gets decompression sickness</b>. Neither does a bubble model. The best model we could honestly fit reaches AUC 0.64 — and rewards ascending <i>faster</i>. This is a teaching instrument about the limits of the thing, not a dive planner.</p>
+  </div>
+
+  <div class="app">
+    <div class="card">
+      <h2>Test a scenario</h2>
+      <div class="presets" id="presets"></div>
+
+      <div class="divider"></div>
+      <h2>Build a dive</h2>
+      <div class="modeswitch" id="modeswitch" role="tablist" aria-label="Input mode">
+        <span class="mslider" id="mslider"></span>
+        <button class="mopt on" id="modeFly" data-mode="fly" role="tab" aria-selected="true">Fly it</button>
+        <button class="mopt" id="modeManual" data-mode="manual" role="tab" aria-selected="false">Manual input</button>
+      </div>
+
+      <div id="flyPanel">
+        <p class="hint">Hold <b>↓ / ▼</b> to descend, <b>↑ / ▲</b> to ascend, or drag the diver on the chart. <b>Space</b> pauses. Return to the surface for the assessment. The clock is compressed — it counts dive-minutes, not real seconds.</p>
+        <div class="keys">
+          <button id="descBtn" class="keybtn" aria-label="Descend (hold)"><span class="g"><svg class="ic"><use href="#i-down"/></svg></span><span class="t">Descend</span><i>hold ↓</i></button>
+          <button id="ascBtn" class="keybtn" aria-label="Ascend (hold)"><span class="g"><svg class="ic"><use href="#i-up"/></svg></span><span class="t">Ascend</span><i>hold ↑</i></button>
+        </div>
+      </div>
+
+      <div id="manualPanel" hidden>
+        <p class="hint">Plan the dive one leg at a time — <b>descend, stop, rise</b>, then confirm. The next leg starts where you left off; finish by rising to <b>0 m</b>.</p>
+        <div class="mstep">
+          <div class="msteph">Leg <b id="mStepNum">1</b> &nbsp;<span id="mStepFrom">from the surface</span></div>
+          <div class="mrow"><label for="mDescV">Descend to</label><input id="mDescV" type="number" value="30" min="0" max="45"><span class="u">m</span></div>
+          <div class="mrow"><label for="mHoldV">Stop for</label><input id="mHoldV" type="number" value="15" min="0" max="90"><span class="u">min</span></div>
+          <div class="mrow"><label for="mAscV">Rise to</label><input id="mAscV" type="number" value="5" min="0" max="45"><span class="u">m</span></div>
+          <button id="mConfirm" class="mconfirm">Confirm leg ✓</button>
+        </div>
+        <div class="manualrows" id="manualRows"></div>
+        <div class="minor"><button id="mUndo">Undo last leg</button><button id="mClear">Clear</button></div>
+      </div>
+
+      <div class="minor"><button id="resetBtn">↺ Clear / new profile</button></div>
+
+      <div class="divider"></div>
+      <h2>Diver &amp; conditions</h2>
+      <div class="field">
+        <label>Ascent / descent speed <b><span id="rateV">15</span> m/min</b></label>
+        <input type="range" id="rate" min="5" max="30" step="1" value="15">
+      </div>
+
+      <div class="unvalidated">
+        <div class="uvhead">⚠ Not in the model — and that is the point</div>
+        <p>The model on this page is fitted to <b>1,948 real Navy dives</b>. Those records contain
+           <b>depth, bottom time, ascent time and outcome — and nothing else</b>. No age. No PFO.
+           No hydration, sleep or fitness.</p>
+        <p>So not one of the factors below can be fitted to a single real decompression-sickness
+           outcome. They are left here, <b>inert</b>, because their absence is the honest finding:
+           the variables every diver is told to care about are the ones this dataset cannot speak to.
+           They move nothing on the dial.</p>
+        <div class="field">
+          <label>Age <b><span id="ageV">40</span></b> <span class="uvtag">inert</span></label>
+          <input type="range" id="age" min="18" max="70" value="40">
+        </div>
+        <div class="field">
+          <label>Physiological factors <span class="uvtag">inert</span></label>
+          <div class="toggles">
+            <div class="tog" data-f="pfo" role="button" tabindex="0" title="Patent foramen ovale. A real risk factor in the literature — but absent from this dataset, so it cannot enter this model.">PFO+</div>
+            <div class="tog" data-f="dehy" role="button" tabindex="0" title="Not recorded in the NMRC 99-02 data. Cannot be fitted.">Dehydrated</div>
+            <div class="tog" data-f="tired" role="button" tabindex="0" title="Not recorded in the NMRC 99-02 data. Cannot be fitted.">Poor sleep</div>
+            <div class="tog on" data-f="fit" role="button" tabindex="0" title="Not recorded in the NMRC 99-02 data. Cannot be fitted.">Fit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right" id="gamearea">
+      <div class="card">
+        <div class="cluster">
+          <div class="gauge" title="Current depth in metres."><div class="lab"><svg class="ic"><use href="#i-depth"/></svg>Depth<span class="q">?</span></div><div class="big"><span id="gDepth">0</span><small> m</small></div></div>
+          <div class="gauge" title="Dive-time elapsed. The clock is compressed — about 0.75 dive-minutes pass per real second."><div class="lab"><svg class="ic"><use href="#i-clock"/></svg>Elapsed<span class="q">?</span></div><div class="big"><span id="gTime">0.0</span><small> min</small></div></div>
+          <div class="gauge" title="No-decompression limit: estimated minutes you can stay at this depth before a straight ascent would exceed a tissue's surfacing limit. ∞ means you're shallow enough that you never exceed it."><div class="lab"><svg class="ic"><use href="#i-ndl"/></svg>No-deco<span class="q">?</span></div><div class="big"><span id="gNdl">∞</span><small> min</small></div></div>
+          <div class="gauge asc" title="How fast you're rising, in metres per minute. Green is safe; amber then red when you ascend too fast."><div class="lab"><svg class="ic"><use href="#i-up"/></svg>Ascent rate<span class="q">?</span></div><div class="big"><span class="arrowbox" id="arrowBox"><svg class="ic"><use href="#i-hold"/></svg></span><span id="gRate">0</span><small> m/m</small></div></div>
+        </div>
+
+        <div class="stage">
+          <div class="watercol" id="watercol">
+            <div class="lightshaft"></div>
+            <div class="surfline"></div>
+            <div class="ruler" id="ruler"></div>
+            <div id="bubbles"></div>
+            <div class="diver" id="diver"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><use href="#i-diver"/></svg></div>
+          </div>
+          <div class="chartwrap">
+            <div class="charthead">
+              <h2 style="margin:0">Dive profile &amp; risk</h2>
+              <div class="now"><b id="statusTag" style="color:var(--muted)">ready</b> — drag the diver to steer<span class="pausechip" id="pauseChip">❚❚ paused</span></div>
+            </div>
+            <canvas id="chart" width="720" height="290" aria-label="Dive depth and modeled risk over time"></canvas>
+            <div class="log" id="log">Load a scenario on the left, or hold <span>▼ Descend</span> to leave the surface.</div>
+            <div class="postbar" id="postbar">
+              <button id="scrubBtn" title="Step back through the dive — drag across the chart to see depth and risk at any moment.">Scrub / replay</button>
+              <button id="editBtn" title="Reshape the dive by dragging its waypoints, then re-analyse the new profile.">Edit &amp; re-analyse</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="riskrow">
+          <div>
+            <div class="dialwrap" id="dialwrap">
+              <svg width="200" height="200" viewBox="0 0 210 210">
+                <g transform="rotate(-90 105 105)">
+                  <circle cx="105" cy="105" r="86" fill="none" stroke="#123344" stroke-width="15"/>
+                  <circle id="arc" cx="105" cy="105" r="86" fill="none" stroke="#2fbf9e" stroke-width="15" stroke-linecap="round" stroke-dasharray="540" stroke-dashoffset="540"/>
+                </g>
+                <g id="ticks" stroke="#2a5468" stroke-width="2"></g>
+                <g id="needle" transform="rotate(0 105 105)">
+                  <polygon points="105,13 101.5,54 108.5,54" fill="#eaf7fb"/>
+                  <circle cx="105" cy="34" r="3.2" fill="#eaf7fb"/>
+                </g>
+              </svg>
+              <div class="val"><div class="num" id="pct">0<i>th</i></div><div class="lbl mono">MODEL RANK · 1,948 REAL NAVY DIVES</div></div>
+            </div>
+          </div>
+          <div>
+            <div class="band" id="band" style="background:rgba(47,191,158,.15);color:var(--safe)">AT SURFACE</div>
+            <div class="drivers">
+              <div class="row"><span>Bühlmann loading (ZHL-16C)</span><b id="dssg">0.62×</b></div>
+              <div class="row"><span>Leading compartment</span><b id="lead">—</b></div>
+              <div class="row"><span>Deco obligation (TTS)</span><b id="driver">—</b></div>
+              <div class="row"><span>Model score (log-odds)</span><b id="logit" class="mono">−1.80</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Tissue compartments — loading vs surfacing limit</h2>
+        <div class="comps" id="comps"></div>
+        <div class="compnote">Each bar is one modeled tissue with a different half-time. The <b style="color:var(--risk)">red mark</b> is its tolerated surfacing tension (the M-value). The compartment furthest past its mark sets your decompression stress and drives the risk above.</div>
+      </div>
+
+      <div class="card">
+        <h2>Surfacing assessment</h2>
+        <div class="placeholder" id="assessPlaceholder">Surface from a dive — or load a scenario — to see where it ranks among 1,948 real Navy dives, which of the three signal-carrying variables moved it, and why the physics disagrees.</div>
+        <div class="assess" id="assess">
+          <div class="atop"><span class="abig" id="aBig">—</span><span class="band" id="aBand"></span></div>
+          <p id="aInterp"></p>
+          <div class="dl" id="aDrivers"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </section>
+
+  <section class="panel" id="p-learn" role="tabpanel" aria-labelledby="tab-learn">
+  <div class="explain">
+    <h2 id="dcs">What decompression sickness is</h2>
+    <p>Decompression sickness — "the bends" — happens when nitrogen absorbed under pressure comes out of solution as bubbles because a diver ascends faster than their tissues can offload it. Here's the sequence, wrapped around the diver at the centre.</p>
+    <div class="dcsgrid">
+      <div class="dcscol">
+        <div class="dcscard"><h4>1 · Nitrogen dissolves under pressure</h4><p>At depth the surrounding pressure rises, forcing more of the nitrogen you breathe into your blood and tissues. The deeper and longer you stay, the more you take on.</p></div>
+        <div class="dcscard"><h4>2 · Tissues fill at different speeds</h4><p>Blood and the spinal cord saturate fast; joints, fat and slow tissues lag. This tool tracks the real <b>16 Bühlmann ZHL-16C compartments</b>, half-times from 4 to 635 minutes.</p></div>
+        <div class="dcscard"><h4>3 · Ascending lets it back out</h4><p>As pressure drops on the way up, that dissolved nitrogen has to leave. Do it slowly and the gas diffuses out harmlessly through the lungs.</p></div>
+      </div>
+      <div class="diver3dwrap" id="diver3d">
+        <div class="diverfallback" id="diverFallback">Loading 3D diver… (needs an internet connection for the 3D library)</div>
+        <div class="dcshint">Drag to rotate</div>
+      </div>
+      <div class="dcscol">
+        <div class="dcscard"><h4>4 · Too fast, and it bubbles</h4><p>Ascend faster than tissues can offload and the nitrogen leaves solution <em>inside</em> the body — like opening a shaken bottle — forming bubbles in blood and tissue.</p></div>
+        <div class="dcscard"><h4>5 · Where bubbles lodge</h4><p>In joints they cause the classic pain ("the bends"); in the spinal cord or brain, neurological injury; in the lungs, the "chokes." Severity depends on where and how many.</p></div>
+        <div class="dcscard"><h4>6 · Why divers differ</h4><p>A PFO (heart shunt), dehydration, fatigue, age and fitness are all believed to shift susceptibility. <b>We could not test any of them.</b> The 1,948 real Navy dives record depth, bottom time, ascent time and outcome — and nothing else. The honest answer here is a shrug.</p></div>
+      </div>
+    </div>
+
+    <h2 id="how">How this actually works</h2>
+    <div class="cols">
+      <div>
+        <h3>The physics (real, and correct)</h3>
+        <p>Breathe under pressure and your tissues absorb extra nitrogen. Come up faster than they can offload it and the gas leaves solution as bubbles. This tool runs the genuine <b>Bühlmann ZHL-16C</b> table — all <b>16 compartments</b>, half-times from 4 to 635 minutes, with the published <i>a</i> and <i>b</i> coefficients. Not a simplification: the same table your dive computer runs.</p>
+        <p>The dial shows <b>tissue loading</b> — the most over-limit compartment, as a multiple of its surfacing M-value. Below 1.0× every tissue is within what the table permits at the surface; above 1.0×, one is not. It behaves exactly as you would expect: slow the ascent or add a stop, and the number falls.</p>
+      </div>
+      <div>
+        <h3>The prediction (weak, and inverted)</h3>
+        <p>We benchmarked that physics against <b>1,948 real Navy dives with real outcomes</b>. Bühlmann's risk index scored <b>NOT SUPPORTED</b> — ΔAUC +0.007, p = 0.20. So did gradient factors. So did a full Epstein-Plesset bubble-growth model. <b>The physics is right, and it does not predict who gets bent.</b></p>
+        <p>The only thing that carries signal is a plain logistic on depth, bottom time and ascent time — and it manages just <b>AUC 0.64</b> (a coin flip is 0.50). Worse, its dominant term is <i>ascent time</i>, which in Navy data means "this dive needed a lot of decompression." Read as advice it says <b>ascend faster</b>. So it is reported as a finding on this page, and it is deliberately <b>kept off the dial</b>.</p>
+      </div>
+    </div>
+
+    <div class="disclaimer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#i-alert"/></svg>
+      <div><b>Why you should distrust any dive app that shows you a probability.</b> To print a "% chance of DCS" you need real outcomes to calibrate against. We have 1,948 of them, and they support <i>a ranking, weakly</i> — nothing close to a probability. Any tool quoting you a percentage is either calibrated on data it is not showing you, or it invented the number. This one refuses to.</div>
+    </div>
+
+    <h2 id="vs">What we set out to build, and what the data said</h2>
+    <p>The premise was reasonable: dive computers run <b>Bühlmann ZH-L16</b>, a deterministic model that gives a hard ceiling but no sense of <i>how likely</i> you are to get hurt, and no way to account for the individual diver. A data-driven probabilistic model should beat that. We built one and tested it honestly against real outcomes. It lost.</p>
+    <div class="cmpwrap">
+      <table class="cmp">
+        <thead><tr><th>Aspect</th><th>Bühlmann ZH-L16 (your dive computer)</th><th class="mine">The data-driven model we hoped for</th></tr></thead>
+        <tbody>
+          <tr><td class="asp">Approach</td><td>Deterministic gas loading across 16 compartments against fixed limits.</td><td>Learn the map from dive profile (plus diver) to observed DCS outcomes.</td></tr>
+          <tr><td class="asp">Intended output</td><td>A go / no-go ceiling and a no-decompression limit.</td><td>A calibrated probability of DCS, with an uncertainty range.</td></tr>
+          <tr><td class="asp">Personalisation</td><td>One curve for everyone; physiology is not an input.</td><td class="con">Would fold in PFO, hydration, fatigue, fitness, age — <b>except the real data records none of them.</b> Untestable, so not built.</td></tr>
+          <tr><td class="asp">Does it predict DCS?</td><td class="con">Benchmarked on 1,948 real dives: <b>NOT SUPPORTED</b> (ΔAUC +0.007, p&nbsp;=&nbsp;0.20).</td><td class="con">Best achievable: <b>AUC 0.64</b> from depth + bottom time + ascent time. Coin flip = 0.50.</td></tr>
+          <tr><td class="asp">What we also tried</td><td colspan="2">Gradient factors (30/70): <b>NOT SUPPORTED</b>. A full Epstein-Plesset bubble-growth model with VPM nuclei: <b>NOT SUPPORTED</b> (ΔAUC −0.0002 — it earns nothing).</td></tr>
+          <tr><td class="asp">Safe to act on?</td><td class="pro"><b>Yes</b> — decades in the field, correctly signed, conservative by design.</td><td class="con"><b>No.</b> Its dominant term rewards <i>short</i> ascents, so it ranks a reckless bounce above a by-the-book dive with a safety stop.</td></tr>
+          <tr><td class="asp">Honest verdict</td><td>The physics is right. It just doesn't tell you who gets bent.</td><td>The best model we could fit is weak <i>and</i> inverted. It is a finding, not a product.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted)">This is a <b>negative result</b>, and it was pre-registered: the benchmark's design spec predicted, before any code ran, that no algorithm would reach <b>SUPPORTED</b>. None did. That prediction holding is the point — it means the pipeline was not tuned until something passed.</p>
+
+    <h2 id="drivers">What moves the risk</h2>
+    <p><b>Depth</b> raises the nitrogen pressure your tissues chase. <b>Bottom time</b> gives that loading longer to accumulate. <b>Ascent rate</b> is the lever most under a diver's control: come up slowly and tissues offload before you surface. All of that is true of the <i>physics</i>, and the compartment bars show it faithfully.</p>
+    <p>But when you ask the <i>real outcomes</i> which of these predicts DCS, the answer is humbling. Max depth barely registers (coefficient +0.007). Ascent time dominates — with the wrong sign, because in Navy records a long ascent means a big decompression obligation, not a careful diver. And <b>physiology</b> — the PFO, the hydration, the sleep, the fitness, the age that every diver is told to care about — <b>could not be tested at all</b>, because the 1,948 real dives do not record a single one of them.</p>
+
+    <h2 id="methods">Methods &amp; limitations</h2>
+    <p><b>What is real here.</b> The tissue kinetics are the genuine Bühlmann ZHL-16C table — 16 compartments, published <i>a</i> and <i>b</i> coefficients, real M-values. The fitted model is a logistic on depth, bottom time and ascent time, trained on <b>1,948 real dives (305 DCS cases)</b> from the US Navy NMRC 99-02 trials. Its skill, <b>AUC 0.64 ± 0.05</b>, is an out-of-sample estimate from nested cross-validation <i>grouped by dive trial</i> — because trials differ in aggressiveness, and pooling them leaks trial identity into the score (that leak is worth +0.044 AUC on its own).</p>
+    <p><b>What this is not.</b> It is <b>not a dive planner</b> and it emits <b>no probability</b>. AUC is a ranking. The ~16% DCS rate in these data comes from Navy trials <i>designed to provoke DCS</i> on partially-extracted negatives; a probability derived from them is meaningless for a recreational diver. Every profile you can build in this explorer also sits far outside the training distribution — those dives averaged 127 fsw for 61 minutes.</p>
+    <p><b>The honest ceiling.</b> No decompression model is derived from first principles; all are semi-empirical and calibrated to trial outcomes. A more elaborate model is more <i>internally sophisticated</i>, not more <i>validated</i>. Building a real personalised DCS predictor is not blocked on cleverness — it is blocked on <b>data that does not exist</b>: dive logs recording diver physiology alongside outcomes.</p>
+
+    <div class="disclaimer">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#i-alert"/></svg>
+      <div><b>Never use this tool to make in-water or ascent decisions.</b> It does not predict decompression sickness — that is its central finding, not a caveat. The one model here that <i>is</i> fitted to real outcomes would, read as advice, tell you to skip your safety stop. Consult your dive computer, your training agency, and a physician for any actual dive planning.</div>
+    </div>
+  </div>
+  </section>
+</div>
+
+<div class="overlay" id="howto">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="howTitle">
+    <h3 id="howTitle">How to use the explorer</h3>
+    <div class="sub">See what the physics says — and where it stops being able to tell you anything.</div>
+    <div class="howstep"><div class="k">1</div><div><b>Load a scenario</b> <span>on the left for an instant analysis, or build your own — either fly it live (↓ / ↑) or enter it leg by leg in Manual input.</span></div></div>
+    <div class="howstep"><div class="k">2</div><div><b>Watch the readouts</b> <span>— the loading dial and the 16 real Bühlmann compartment bars update live, so you can see which tissue is leading and why.</span></div></div>
+    <div class="howstep"><div class="k">3</div><div><b>Surface</b> <span>(return to 0 m) for the full assessment: what the physics says, and then what happened when we fitted a model to real outcomes and it ranked the reckless dive as the safer one.</span></div></div>
+    <div class="howstep"><div class="k">4</div><div><b>Iterate</b> <span>— scrub the replay, edit the profile's waypoints, or change the diver's physiology, and re-analyse.</span></div></div>
+    <div class="actions"><button id="howClose">Start exploring</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="text/html" id="pitchDoc"><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DCS Pitch Animation</title>
+<style>
+  :root{
+    --ink:#eaf6ff;
+    --dim:#8fb4cc;
+    --accent:#5fd0ff;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:#05080d;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  #page{
+    width:100%; max-width:1280px; margin:0 auto;
+    padding:24px 16px 40px;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  #stageWrap{
+    width:100%; aspect-ratio:16/9;
+    background:#000; border-radius:6px; overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  #stage{ width:100%; height:100%; display:block; }
+  .scene{ opacity:0; transition:opacity .6s ease; }
+  .scene.active{ opacity:1; }
+  #controls{
+    width:100%; margin-top:18px;
+    display:flex; align-items:center; gap:14px;
+  }
+  button{
+    background:#101a26; color:var(--ink); border:1px solid #24384a;
+    padding:9px 18px; border-radius:20px; font-size:14px; cursor:pointer;
+    letter-spacing:.02em; transition:background .2s ease;
+  }
+  button:hover{ background:#182634; }
+  #captionBar{
+    flex:1; color:var(--dim); font-size:15px; line-height:1.4;
+    min-height:20px;
+  }
+  #captionBar.hidden{ visibility:hidden; }
+</style>
+<style id="embedFix">
+  html,body{height:100%!important;background:transparent!important;overflow:hidden!important}
+  #page{padding:0!important;max-width:none!important;width:100%!important;height:100%!important;position:relative!important;justify-content:flex-start!important}
+  #stageWrap{border-radius:0!important;box-shadow:none!important;width:100%!important;height:100%!important;aspect-ratio:auto!important}
+  #controls{position:absolute!important;left:0;right:0;bottom:0;margin:0!important;padding:12px 16px!important;
+    display:flex;align-items:center;gap:12px;background:linear-gradient(0deg,rgba(3,7,12,.92),rgba(3,7,12,.45) 60%,transparent)!important}
+  #captionBar{position:absolute!important;left:16px;right:16px;bottom:62px;flex:none!important;font-size:14px;text-align:center;
+    text-shadow:0 1px 8px rgba(0,0,0,.85)}
+  .pctrl{background:#101a26;color:#eaf6ff;border:1px solid #24384a;border-radius:20px;padding:8px 15px;font-size:13px;cursor:pointer}
+  .pctrl:hover{background:#1b2c3c}
+  #pbar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.16);position:relative;cursor:pointer}
+  #pfill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:#5fd0ff;width:0}
+  #pdot{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:#eaf6ff;transform:translate(-50%,-50%);left:0}
+  #ptime{font-size:12px;color:#8fb4cc;font-family:monospace;min-width:78px;text-align:right}
+</style>
+</head>
+<body>
+<div id="page">
+  <div id="stageWrap">
+    <svg id="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <defs>
+        <linearGradient id="oceanGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#1c5f82"/>
+          <stop offset="0.55" stop-color="#0d3b57"/>
+          <stop offset="1" stop-color="#020c15"/>
+        </linearGradient>
+        <linearGradient id="oceanDeepGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#0a2f45"/>
+          <stop offset="1" stop-color="#00050a"/>
+        </linearGradient>
+        <radialGradient id="vesselGrad" cx="0.5" cy="0.45" r="0.75">
+          <stop offset="0" stop-color="#711018"/>
+          <stop offset="1" stop-color="#1c0407"/>
+        </radialGradient>
+        <linearGradient id="canBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#070d14"/>
+          <stop offset="1" stop-color="#101c2b"/>
+        </linearGradient>
+        <linearGradient id="panelGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#061220"/>
+          <stop offset="1" stop-color="#01050a"/>
+        </linearGradient>
+        <linearGradient id="canBody" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#2c3a48"/>
+          <stop offset="0.18" stop-color="#8fa3b3"/>
+          <stop offset="0.32" stop-color="#e8eff4"/>
+          <stop offset="0.5" stop-color="#aebccb"/>
+          <stop offset="0.7" stop-color="#7f93a4"/>
+          <stop offset="1" stop-color="#28343f"/>
+        </linearGradient>
+        <radialGradient id="vignetteGrad" cx="0.5" cy="0.48" r="0.75">
+          <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+          <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+        </radialGradient>
+        <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="10" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <!-- NOTE: these are plain <g> (not <symbol>) intentionally. cairosvg
+             (used by the offline MP4 render pipeline) fails to render
+             <symbol> elements whose viewBox has a negative origin - the
+             instanced content silently disappears. A <g> with the same
+             child coordinates renders identically in every browser and
+             works correctly in cairosvg too. -->
+        <g id="diverSym">
+          <path d="M -9 30 L -13 60 L -24 66" stroke="#134058" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M 9 30 L 13 60 L 24 66" stroke="#134058" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M -16 -28 Q 0 -19 16 -28 L 19 20 Q 0 33 -19 20 Z" fill="#123249" stroke="#7fe0ff" stroke-width="2"/>
+          <path d="M -18 -4 L -38 8" stroke="#7fe0ff" stroke-width="7" stroke-linecap="round" fill="none"/>
+          <path d="M 18 -4 L 38 8" stroke="#7fe0ff" stroke-width="7" stroke-linecap="round" fill="none"/>
+          <ellipse cx="0" cy="-45" rx="13" ry="14" fill="#123249" stroke="#7fe0ff" stroke-width="2"/>
+          <ellipse cx="0" cy="-46" rx="7" ry="6" fill="#e8fbff" opacity="0.9"/>
+        </g>
+        <g id="diveComputerSym">
+          <rect x="-55" y="-30" width="30" height="60" rx="10" fill="#0a141e" stroke="#233544" stroke-width="3"/>
+          <rect x="25" y="-30" width="30" height="60" rx="10" fill="#0a141e" stroke="#233544" stroke-width="3"/>
+          <rect x="-45" y="-70" width="90" height="140" rx="22" fill="#101c28" stroke="#2e4457" stroke-width="4"/>
+          <rect x="-35" y="-55" width="70" height="110" rx="8" fill="#020609" stroke="#1b6b8f" stroke-width="2"/>
+        </g>
+      </defs>
+
+      <!-- ================= SCENE 1 : DCS EXPLAINED (0-12s) ================= -->
+      <g id="scene1" class="scene active">
+        <rect id="s1_bgOcean" x="0" y="0" width="1920" height="1080" fill="url(#oceanGrad)"/>
+        <rect id="s1_bgDeep" x="0" y="0" width="1920" height="1080" fill="url(#oceanDeepGrad)" opacity="0"/>
+        <rect id="s1_bgVessel" x="0" y="0" width="1920" height="1080" fill="url(#vesselGrad)" opacity="0"/>
+        <rect id="s1_bgCan" x="0" y="0" width="1920" height="1080" fill="url(#canBg)" opacity="0"/>
+        <rect id="s1_depthOverlay" x="0" y="0" width="1920" height="1080" fill="#000814" opacity="0"/>
+
+        <!-- vessel tube + bubbles -->
+        <g id="s1_vessel" opacity="0">
+          <rect x="60" y="470" width="1800" height="180" rx="90" fill="#4a0a10" stroke="#c73b45" stroke-width="4" opacity="0.85"/>
+          <rect x="60" y="530" width="1800" height="30" rx="15" fill="#ffb3ab" opacity="0.18"/>
+          <g id="s1_bubbles"></g>
+        </g>
+
+        <!-- surface splash rings for entry jump -->
+        <g id="s1_splash"></g>
+
+        <!-- diver + streaks + n2 particles -->
+        <g id="s1_diverGroup" opacity="1">
+          <g id="s1_streaks"></g>
+          <g id="s1_diver" transform="translate(960,150) scale(1.6)">
+            <use href="#diverSym" xlink:href="#diverSym"/>
+            <g id="s1_n2particles"></g>
+          </g>
+        </g>
+
+        <!-- soda can -->
+        <g id="s1_can" opacity="0" transform="translate(960,540)">
+          <ellipse id="s1_canGlow" cx="0" cy="-40" rx="140" ry="220" fill="#5fd0ff" opacity="0"/>
+          <ellipse cx="0" cy="182" rx="86" ry="14" fill="#000000" opacity="0.35"/>
+          <g id="s1_canBody">
+            <rect x="-84" y="-190" width="168" height="372" rx="30" fill="url(#canBody)" stroke="#141d26" stroke-width="2.5"/>
+            <rect x="-84" y="-190" width="30" height="372" rx="15" fill="#ffffff" opacity="0.12"/>
+            <ellipse cx="0" cy="-190" rx="84" ry="15" fill="#d7e1e8" stroke="#8b99a4" stroke-width="2"/>
+            <ellipse cx="0" cy="-190" rx="60" ry="9" fill="#aeb9c2"/>
+            <g id="s1_tab" transform="translate(14,-190)">
+              <ellipse cx="0" cy="0" rx="15" ry="8" fill="none" stroke="#6d7b87" stroke-width="4.5"/>
+              <circle cx="-10" cy="0" r="2.6" fill="#4a5560"/>
+            </g>
+          </g>
+          <circle id="s1_popFlash" cx="0" cy="-190" r="10" fill="none" stroke="#eaf6ff" stroke-width="6" opacity="0"/>
+          <g id="s1_fizz"></g>
+        </g>
+
+        <g id="s1_text" opacity="0" transform="translate(960,540)">
+          <rect x="-3" y="-70" width="6" height="60" fill="#5fd0ff" opacity="0.85"/>
+          <text x="0" y="-10" text-anchor="middle" font-size="128" font-weight="700" letter-spacing="4" fill="#eaf6ff" font-family="Helvetica Neue, Arial, sans-serif">DCS</text>
+          <text x="0" y="52" text-anchor="middle" font-size="28" letter-spacing="6" fill="#7fa9c4" font-family="Helvetica Neue, Arial, sans-serif">DECOMPRESSION SICKNESS</text>
+        </g>
+      </g>
+
+      <!-- ================= SCENE 2 : PHYSIOLOGY-BLIND (12-31s) ================= -->
+      <g id="scene2" class="scene">
+        <rect x="0" y="0" width="1920" height="1080" fill="url(#panelGrad)"/>
+
+        <g id="s2_computer" transform="translate(960,420)">
+          <use href="#diveComputerSym" xlink:href="#diveComputerSym" transform="scale(2.6)"/>
+          <text id="s2_depthNum" x="0" y="-10" text-anchor="middle" font-size="46" fill="#5fd0ff" font-family="monospace" font-weight="700">0m</text>
+          <text x="0" y="30" text-anchor="middle" font-size="18" letter-spacing="2" fill="#4d7a94" font-family="monospace">DEPTH</text>
+          <rect x="-90" y="60" width="180" height="14" rx="7" fill="#0a1620" stroke="#2c4152" stroke-width="2"/>
+          <rect id="s2_ascentBar" x="-88" y="62" width="0" height="10" rx="5" fill="#5fd0ff"/>
+        </g>
+        <text id="s2_computerLabel" x="960" y="640" text-anchor="middle" font-size="28" fill="#7fa9c4" letter-spacing="0.5" opacity="0">Every dive computer runs the same ascent math</text>
+
+        <g id="s2_split" opacity="0">
+          <g id="s2_diverLeft" transform="translate(560,380)">
+            <use href="#diverSym" xlink:href="#diverSym" transform="scale(1.7)"/>
+            <text x="0" y="-190" text-anchor="middle" font-size="28" letter-spacing="1" fill="#eaf6ff" font-weight="600">20 &#183; FIT</text>
+            <path id="s2_curveLeft" d="M -220 150 L -110 175 L 0 200 L 110 225 L 220 250" fill="none" stroke="#3fd7c4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <g id="s2_labelsLeft"></g>
+          </g>
+          <g id="s2_diverRight" transform="translate(1360,380)">
+            <use href="#diverSym" xlink:href="#diverSym" transform="scale(1.7)"/>
+            <text x="0" y="-190" text-anchor="middle" font-size="28" letter-spacing="1" fill="#eaf6ff" font-weight="600">55 &#183; HEART DEFECT</text>
+            <path id="s2_curveRight" d="M -220 150 L -110 175 L 0 200 L 110 225 L 220 250" fill="none" stroke="#ffb347" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <g id="s2_labelsRight"></g>
+          </g>
+        </g>
+
+        <!-- NOTE: kept well above y=830 intentionally - the burned-in
+             caption band occupies roughly the bottom 830-1080px, and this
+             label used to sit at y=1000 (inside that band) which made the
+             caption box visually cut across it. -->
+        <text id="s2_finalLabel" x="960" y="760" text-anchor="middle" font-size="38" font-weight="600" letter-spacing="0.5" fill="#eaf6ff" opacity="0">Same math. Different bodies.</text>
+      </g>
+
+      <!-- ================= SCENE 3 : WHAT I BUILT (31-53s) ================= -->
+      <g id="scene3" class="scene">
+        <rect x="0" y="0" width="1920" height="1080" fill="url(#panelGrad)"/>
+        <g id="s3_main"></g>
+        <g id="s3_branch"></g>
+      </g>
+
+      <!-- ================= SCENE 4 : MARKET (53-61s) ================= -->
+      <g id="scene4" class="scene">
+        <rect x="0" y="0" width="1920" height="1080" fill="url(#panelGrad)"/>
+        <g id="s4_icons"></g>
+        <text id="s4_number" x="960" y="560" text-anchor="middle" font-size="118" font-weight="700" fill="#eaf6ff">0</text>
+        <text id="s4_label" x="960" y="630" text-anchor="middle" font-size="30" letter-spacing="1" fill="#8fb4cc" opacity="0">CERTIFIED DIVERS</text>
+        <text id="s4_sub" x="960" y="720" text-anchor="middle" font-size="26" fill="#5fd0ff" opacity="0">An industry already moving to AI dive computers</text>
+      </g>
+
+      <!-- ================= SCENE 5 : END CARD (61s+) ================= -->
+      <g id="scene5" class="scene">
+        <rect x="0" y="0" width="1920" height="1080" fill="url(#panelGrad)"/>
+        <g id="s5_bubbles"></g>
+        <text id="s5_title" x="960" y="495" text-anchor="middle" font-size="54" font-weight="700" letter-spacing="0.5" fill="#eaf6ff" opacity="0">Personalized Decompression Risk</text>
+        <rect id="s5_rule" x="860" y="535" width="200" height="2" fill="#5fd0ff" opacity="0"/>
+        <text id="s5_credential" x="960" y="580" text-anchor="middle" font-size="26" letter-spacing="1" fill="#8fb4cc" opacity="0">PADI MASTER SCUBA DIVER &#183; 100+ DIVES</text>
+      </g>
+
+      <rect x="0" y="0" width="1920" height="1080" fill="url(#vignetteGrad)" pointer-events="none"/>
+    </svg>
+  </div>
+
+  <div id="controls">
+    <button id="replayBtn">&#8635; Replay</button>
+    <button id="captionsBtn">Captions: On</button>
+    <div id="captionBar"></div>
+  </div>
+</div>
+
+<script>window.__NO_AUTOPLAY__=true;<\/script>
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  function easeOutCubic(x){ return 1 - Math.pow(1-x,3); }
+  function easeInOutCubic(x){ return x<0.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2; }
+  // progress 0..1 within [start,end], clamped
+  function prog(t,start,end){ if(end<=start) return t>=end?1:0; return clamp((t-start)/(end-start),0,1); }
+  // fade helper: returns 0..1 opacity rising over [inS,inE]
+  function fadeIn(t,inS,inE){ return easeOutCubic(prog(t,inS,inE)); }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const xlinkNS = "http://www.w3.org/1999/xlink";
+  function el(tag, attrs){
+    const e = document.createElementNS(svgNS, tag);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    if(attrs && attrs.href) e.setAttributeNS(xlinkNS, "xlink:href", attrs.href);
+    return e;
+  }
+
+  /* ---------------- CAPTIONS ---------------- */
+  const CAPTIONS = [
+    [0,4,"Underwater, pressure forces nitrogen to dissolve into your body…"],
+    [4,6.5,"Come up too fast…"],
+    [6.5,10,"…and it comes back out as bubbles."],
+    [10,14.5,"Like cracking open a shaken soda. That's decompression sickness — DCS."],
+    [14.5,33.5,"Every dive computer runs one-size-fits-all math — same ascent rules for a fit 20-year-old and a 55-year-old with a heart defect."],
+    [33.5,55.5,"A physics-based dive simulator paired with a calibrated risk layer — a benchmark for personalized risk models, now moving from simulated to real dive-outcome data."],
+    [55.5,63.5,"30 million-plus certified divers, in an industry already shifting to AI-powered dive computers."],
+    [63.5,999,""]
+  ];
+  let captionsOn = true;
+  function updateCaption(t){
+    const bar = $("captionBar");
+    if(!captionsOn){ bar.textContent=""; return; }
+    for(const c of CAPTIONS){ if(t>=c[0] && t<c[1]){ bar.textContent = c[2]; return; } }
+    bar.textContent = "";
+  }
+
+  /* ---------------- SCENE 1 DATA ---------------- */
+  // nitrogen particles (relative to diver group origin)
+  const N2 = [];
+  for(let i=0;i<12;i++){
+    const angle = (i/12)*Math.PI*2 + (i%2)*0.3;
+    N2.push({delay: 0.4 + i*0.28, dur: 0.9, angle, dist: 60+ (i%3)*18});
+  }
+  const n2Group = $("s1_n2particles");
+  N2.forEach((p,i)=>{
+    const c = el("circle",{r:4, fill:"#bfe9ff", opacity:0});
+    c.id = "n2_"+i;
+    n2Group.appendChild(c);
+  });
+
+  // entry splash rings (diver jumps in at t=0)
+  const splashGroup = $("s1_splash");
+  const RINGS = [ {delay:0.05,dur:0.9}, {delay:0.18,dur:0.9}, {delay:0.32,dur:0.85} ];
+  RINGS.forEach((r,i)=>{
+    const c = el("circle",{cx:960, cy:150, r:0, fill:"none", stroke:"#bfeeff", "stroke-width":5, opacity:0});
+    c.id = "ring_"+i;
+    splashGroup.appendChild(c);
+  });
+
+  // ascent streak duplicates
+  const streakGroup = $("s1_streaks");
+  const streakDefs = [ {dy:36,op:0.35}, {dy:74,op:0.20}, {dy:112,op:0.10} ];
+  streakDefs.forEach((s,i)=>{
+    // NOTE: opacity is set on this wrapping <g>, not on the <use> itself.
+    // cairosvg (offline render pipeline) ignores an `opacity` attribute set
+    // directly on a <use> element but respects it on a parent <g> - without
+    // the wrapper these "invisible" streak copies render at full opacity.
+    const g = el("g", {id:"streak_"+i, opacity:0});
+    g.appendChild(el("use",{href:"#diverSym"}));
+    streakGroup.appendChild(g);
+  });
+
+  // bubbles in vessel
+  const BUB = [];
+  for(let i=0;i<22;i++){
+    BUB.push({
+      spawn: 6.6 + (i*(3.2/22)),
+      grow: 1.1,
+      x: 160 + (i*74)%1650,
+      y: 500 + ((i*53)%150),
+      maxR: 10 + (i%5)*5
+    });
+  }
+  const bubGroup = $("s1_bubbles");
+  BUB.forEach((b,i)=>{
+    const c = el("circle",{cx:b.x, cy:b.y, r:0, fill:"#ffd9d4", opacity:0, "fill-opacity":0.85});
+    c.id = "bub_"+i;
+    bubGroup.appendChild(c);
+  });
+
+  // fizz particles for soda can - burst now fires at the POP instant (see
+  // POP_T below), not on can-appear, and is bigger/faster for more punch.
+  const FIZZ = [];
+  for(let i=0;i<32;i++){
+    const a = (Math.PI*1.5) * (i/32) - Math.PI*1.75;
+    FIZZ.push({angle:a, speed: 110+ (i%7)*22, delay: 13.0 + (i%9)*0.02, big:i%5===0});
+  }
+  const fizzGroup = $("s1_fizz");
+  FIZZ.forEach((f,i)=>{
+    const c = el("circle",{r:5, cx:20, cy:-180, fill:"#dff0ff", opacity:0});
+    c.id = "fizz_"+i;
+    fizzGroup.appendChild(c);
+  });
+
+  // --- soda-can tension build-up before the pop -------------------------
+  // TENSION_START..POP_T: the can trembles with growing amplitude/frequency
+  // (like it's about to burst). At POP_T it snaps open in POP_DUR seconds,
+  // kicks with a decaying shake, and the fizz burst (above) fires.
+  const CAN_TENSION_START = 10.3;
+  const CAN_POP_T = 13.0;
+  function canShake(t){
+    if(t < CAN_TENSION_START) return {jx:0, jy:0, scale:1};
+    if(t < CAN_POP_T){
+      const p = prog(t, CAN_TENSION_START, CAN_POP_T);
+      const amp = lerp(1, 9, p);
+      const freq = lerp(2.5, 13, p);
+      return {
+        jx: amp*Math.sin(t*freq*2*Math.PI),
+        jy: amp*0.6*Math.cos(t*freq*2*Math.PI*1.31 + 1.1),
+        scale: 1 + 0.018*p*Math.sin(t*freq*2*Math.PI*0.9)
+      };
+    }
+    const dt = t - CAN_POP_T;
+    if(dt < 0.35){
+      const decay = Math.exp(-dt*11);
+      return { jx: 14*decay*Math.sin(dt*70), jy: 8*decay*Math.cos(dt*65), scale: 1+0.03*decay };
+    }
+    return {jx:0, jy:0, scale:1};
+  }
+  function canTabRotation(t){
+    if(t < CAN_TENSION_START) return 0;
+    if(t < CAN_POP_T){
+      const p = prog(t, CAN_TENSION_START, CAN_POP_T);
+      const freq = lerp(2.5, 13, p);
+      return lerp(0,8,p) + lerp(2,16,p)*Math.sin(t*freq*2*Math.PI*1.15 + 0.4);
+    }
+    return lerp(8, -85, easeOutCubic(prog(t, CAN_POP_T, CAN_POP_T+0.15)));
+  }
+
+  function renderScene1(t){
+    // backgrounds crossfade: ocean -> deep(during ascent) -> vessel(zoom) -> can
+    $("s1_bgDeep").setAttribute("opacity", fadeIn(t,3.6,4.2) * (1-fadeIn(t,6.3,7.0)));
+    $("s1_bgVessel").setAttribute("opacity", fadeIn(t,6.2,7.2) * (1-fadeIn(t,9.6,10.3)));
+    $("s1_bgCan").setAttribute("opacity", fadeIn(t,9.6,10.3));
+    $("s1_depthOverlay").setAttribute("opacity", 0.55*prog(t,0,4) * (1-fadeIn(t,6.2,7.2)));
+
+    // diver group visible 0 - 7.2s
+    const diverGroupOp = 1 - fadeIn(t,6.4,7.2);
+    $("s1_diverGroup").setAttribute("opacity", Math.max(0,diverGroupOp));
+
+    let dy;
+    if(t <= 0.55){
+      dy = lerp(-90, 150, easeOutCubic(prog(t,0,0.55)));
+    } else if(t <= 4){
+      dy = lerp(150, 560, easeOutCubic(prog(t,0.55,4)));
+    } else if(t <= 6.5){
+      dy = lerp(560, 40, easeInOutCubic(prog(t,4,6.5)));
+    } else {
+      dy = 40;
+    }
+    const entryScale = t<=0.55 ? lerp(1.4,1.6,prog(t,0,0.55)) : 1.6;
+    $("s1_diver").setAttribute("transform", `translate(960,${dy}) scale(${entryScale})`);
+
+    // entry splash rings
+    RINGS.forEach((r,i)=>{
+      const c = $("ring_"+i);
+      const lp = t - r.delay;
+      if(lp<0 || lp>r.dur){ c.setAttribute("opacity",0); return; }
+      const pr = lp/r.dur;
+      c.setAttribute("r", lerp(8,160, easeOutCubic(pr)));
+      c.setAttribute("cy", 150 - pr*18);
+      c.setAttribute("opacity", (1-pr)*0.75);
+    });
+
+    // n2 particles
+    N2.forEach((p,i)=>{
+      const lp = t - p.delay;
+      const c = $("n2_"+i);
+      if(lp<0 || lp>p.dur || t>4.2){ c.setAttribute("opacity",0); return; }
+      const pr = lp/p.dur;
+      const dist = p.dist*(1-pr);
+      c.setAttribute("cx", Math.cos(p.angle)*dist);
+      c.setAttribute("cy", Math.sin(p.angle)*dist*0.6);
+      c.setAttribute("opacity", Math.sin(pr*Math.PI)*0.9);
+    });
+
+    // ascent streaks (4 - 6.5s)
+    streakDefs.forEach((s,i)=>{
+      const u = $("streak_"+i);
+      const on = (t>4 && t<6.6) ? fadeIn(t,4,4.4)*(1-fadeIn(t,6.2,6.6)) : 0;
+      u.setAttribute("opacity", on*s.op);
+      u.setAttribute("transform", `translate(960,${dy+s.dy}) scale(1.6)`);
+    });
+
+    // vessel + bubbles (6.2 - 10.3s)
+    const vesselOp = fadeIn(t,6.4,7.2) * (1-fadeIn(t,9.6,10.3));
+    $("s1_vessel").setAttribute("opacity", Math.max(0,vesselOp));
+    BUB.forEach((b,i)=>{
+      const c = $("bub_"+i);
+      const lp = t - b.spawn;
+      if(lp<0){ c.setAttribute("opacity",0); return; }
+      const pr = clamp(lp/b.grow,0,1);
+      const r = lerp(2, b.maxR, easeOutCubic(pr));
+      const drift = Math.min(lp,3)*10;
+      c.setAttribute("r", r);
+      c.setAttribute("cx", b.x + drift);
+      c.setAttribute("opacity", Math.min(1, lp*3) * 0.85);
+    });
+
+    // soda can: appears, trembles with building tension, pops, then
+    // crossfades out as the DCS title reveals.
+    const canOp = fadeIn(t,9.7,10.3) * (1 - fadeIn(t,13.5,14.1));
+    const shake = canShake(t);
+    $("s1_can").setAttribute("opacity", canOp);
+    $("s1_can").setAttribute("transform", `translate(${960+shake.jx},${540+shake.jy}) scale(${shake.scale})`);
+    const tabRot = canTabRotation(t);
+    $("s1_tab").setAttribute("transform", `translate(14,-190) rotate(${tabRot})`);
+
+    // pressure glow behind the can: pulses faster/brighter through the
+    // tension window, then flashes once at the pop
+    let glowOp;
+    if(t < CAN_TENSION_START){ glowOp = 0; }
+    else if(t < CAN_POP_T){
+      const p = prog(t, CAN_TENSION_START, CAN_POP_T);
+      const freq = lerp(2.5, 13, p);
+      glowOp = p*0.35*(0.5+0.5*Math.sin(t*freq*2*Math.PI));
+    } else {
+      glowOp = 0.6*(1-prog(t, CAN_POP_T, CAN_POP_T+0.4));
+    }
+    $("s1_canGlow").setAttribute("opacity", Math.max(0,glowOp));
+
+    // pop flash ring
+    const flashPr = prog(t, CAN_POP_T, CAN_POP_T+0.4);
+    if(t >= CAN_POP_T && flashPr < 1){
+      $("s1_popFlash").setAttribute("r", lerp(10,150,easeOutCubic(flashPr)));
+      $("s1_popFlash").setAttribute("opacity", (1-flashPr)*0.9);
+    } else {
+      $("s1_popFlash").setAttribute("opacity", 0);
+    }
+
+    FIZZ.forEach((f,i)=>{
+      const c = $("fizz_"+i);
+      const lp = t - f.delay;
+      const dur = f.big ? 1.6 : 1.3;
+      if(lp<0 || lp>dur){ c.setAttribute("opacity",0); return; }
+      const pr = lp/dur;
+      const dist = f.speed*pr*1.5;
+      c.setAttribute("cx", 14 + Math.cos(f.angle)*dist);
+      c.setAttribute("cy", -190 + Math.sin(f.angle)*dist - pr*pr*55);
+      c.setAttribute("r", lerp(f.big?8:5, 1, pr));
+      c.setAttribute("opacity", (1-pr)*0.9);
+    });
+
+    // DCS text - reveals right after the pop
+    const textOp = fadeIn(t,13.6,14.5);
+    $("s1_text").setAttribute("opacity", textOp);
+    $("s1_text").setAttribute("transform", `translate(960,${lerp(560,540,textOp)}) scale(${lerp(0.85,1,textOp)})`);
+  }
+
+  /* ---------------- SCENE 2 ---------------- */
+  // These now sit on the compact ascent-curve band BELOW the diver figure
+  // (curve y 150-250, diver's feet end around y=116) so the depth labels
+  // never overlap the diver graphic.
+  const STOPS = [
+    {x:-220,y:150,label:"18m"},
+    {x:0,y:200,label:"9m"},
+    {x:220,y:250,label:"0m"}
+  ];
+  const labelsLeftG = $("s2_labelsLeft"), labelsRightG = $("s2_labelsRight");
+  STOPS.forEach((s,i)=>{
+    const tl = el("text",{x:s.x, y:s.y-20, "text-anchor":"middle","font-size":22,fill:"#5fd0ff",opacity:0});
+    tl.textContent = s.label; tl.id="stopL_"+i; labelsLeftG.appendChild(tl);
+    const tr = el("text",{x:s.x, y:s.y-20, "text-anchor":"middle","font-size":22,fill:"#ff8a65",opacity:0});
+    tr.textContent = s.label; tr.id="stopR_"+i; labelsRightG.appendChild(tr);
+  });
+  const CURVE_LEN = 460; // approx path length for dash animation (recomputed for the new shorter path)
+
+  function renderScene2(ls){
+    // ls: local time within scene2, 0..19
+    const computerOp = fadeIn(ls,0,0.6) * (1-fadeIn(ls,5.0,5.8));
+    $("s2_computer").setAttribute("opacity", computerOp);
+    const depth = Math.round(lerp(0,42, easeOutCubic(prog(ls,0.3,3.0))));
+    $("s2_depthNum").textContent = depth+"m";
+    $("s2_ascentBar").setAttribute("width", lerp(0,176, easeOutCubic(prog(ls,3.0,5.0))));
+    $("s2_computerLabel").setAttribute("opacity", fadeIn(ls,1.0,2.0)*(1-fadeIn(ls,5.0,5.8)));
+
+    const splitOp = fadeIn(ls,5.2,6.4);
+    $("s2_split").setAttribute("opacity", splitOp);
+
+    const drawProg = easeInOutCubic(prog(ls,6.5,14.5));
+    const dash = CURVE_LEN * (1-drawProg);
+    [$("s2_curveLeft"), $("s2_curveRight")].forEach(p=>{
+      p.setAttribute("stroke-dasharray", CURVE_LEN);
+      p.setAttribute("stroke-dashoffset", dash);
+    });
+
+    STOPS.forEach((s,i)=>{
+      const threshold = 0.15 + i*0.35;
+      const on = drawProg > threshold ? 1 : 0;
+      $("stopL_"+i).setAttribute("opacity", on);
+      $("stopR_"+i).setAttribute("opacity", on);
+    });
+
+    $("s2_finalLabel").setAttribute("opacity", fadeIn(ls,15.5,17.0));
+  }
+
+  /* ---------------- SCENE 3 ---------------- */
+  // Measured directly from rendered frames: a 2-line burned-in caption's
+  // text spans roughly y=719-844 (of 1080). Both node rows below are kept
+  // clear of y=700 with margin.
+  const NODES = [
+    {id:"n1", x:230, y:430, w:280, h:110, label:"Dive profile", inS:0, inE:1.6},
+    {id:"n2", x:700, y:430, w:280, h:110, label:"Physics engine", inS:4.0, inE:5.6},
+    {id:"n3", x:1170, y:430, w:280, h:110, label:"Risk model", inS:8.0, inE:9.6},
+    {id:"n4", x:1640, y:430, w:340, h:130, label:"Personalized risk %", inS:12.0, inE:13.6}
+  ];
+  const LINKS = [
+    {from:0,to:1,flowS:1.6,flowE:4.2},
+    {from:1,to:2,flowS:5.6,flowE:8.2},
+    {from:2,to:3,flowS:9.6,flowE:12.2}
+  ];
+  // y:620 keeps this row's bottom edge (~678 incl. shadow) clear of the
+  // measured 2-line caption top (~719), with the main row above it also
+  // moved up so there's still breathing room between the two rows.
+  const BRANCH = [
+    {id:"b1", x:700, y:620, w:320, h:100, label:"Synthetic benchmark", inS:16.0,inE:17.6},
+    {id:"b2", x:1170, y:620, w:320, h:100, label:"Real dive-outcome data", inS:19.5,inE:21.2}
+  ];
+  const mainG = $("s3_main"), branchG = $("s3_branch");
+
+  function makeNode(n){
+    const g = el("g",{id:"node_"+n.id, opacity:0});
+    const shadow = el("rect",{x:n.x-n.w/2+6,y:n.y-n.h/2+8,width:n.w,height:n.h,rx:16,fill:"#000000",opacity:0.35});
+    const rect = el("rect",{x:n.x-n.w/2,y:n.y-n.h/2,width:n.w,height:n.h,rx:16,fill:"#0a1b29",stroke:"#2c4c66","stroke-width":2.5});
+    const accent = el("rect",{x:n.x-n.w/2,y:n.y-n.h/2,width:n.w,height:4,rx:2,fill:"#5fd0ff",opacity:0.8});
+    const text = el("text",{x:n.x,y:n.y+8,"text-anchor":"middle","font-size":25,fill:"#eaf6ff","font-weight":600,"letter-spacing":0.3});
+    text.textContent = n.label;
+    g.appendChild(shadow); g.appendChild(rect); g.appendChild(accent); g.appendChild(text);
+    return g;
+  }
+  NODES.forEach(n=> mainG.appendChild(makeNode(n)));
+  BRANCH.forEach(n=> branchG.appendChild(makeNode(n)));
+
+  // risk % counter text inside n4 (append separately so we can update)
+  const riskText = el("text",{x:1640,y:490,"text-anchor":"middle","font-size":40,"font-weight":700,fill:"#5fd0ff"});
+  riskText.id = "riskPercent"; riskText.textContent="0%";
+  mainG.appendChild(riskText);
+
+  // link particle groups
+  LINKS.forEach((l,i)=>{
+    const g = el("g",{id:"link_"+i});
+    for(let k=0;k<5;k++){
+      g.appendChild(el("circle",{r:6, fill:"#5fd0ff", opacity:0, id:"linkp_"+i+"_"+k}));
+    }
+    mainG.appendChild(g);
+  });
+  const branchLinkG = el("g",{id:"branchLink"});
+  for(let k=0;k<5;k++) branchLinkG.appendChild(el("circle",{r:6,fill:"#5fd0ff",opacity:0,id:"blinkp_"+k}));
+  branchG.appendChild(branchLinkG);
+
+  function renderScene3(ls){
+    NODES.forEach(n=>{
+      const g = $("node_"+n.id);
+      const op = fadeIn(ls,n.inS,n.inE);
+      g.setAttribute("opacity", op);
+      g.setAttribute("transform", `translate(0,${lerp(14,0,op)})`);
+    });
+    LINKS.forEach((l,i)=>{
+      const a = NODES[l.from], b = NODES[l.to];
+      for(let k=0;k<5;k++){
+        const c = $("linkp_"+i+"_"+k);
+        const localT = ls - l.flowS - k*0.25;
+        const dur = l.flowE-l.flowS;
+        if(localT<0 || localT>dur){ c.setAttribute("opacity",0); continue; }
+        const pr = localT/dur;
+        // stop ~36px short of the target node's edge and fade out on
+        // arrival so the particle doesn't sit on top of the node's label
+        c.setAttribute("cx", lerp(a.x+a.w/2, b.x-b.w/2-36, pr));
+        c.setAttribute("cy", lerp(a.y,b.y,pr));
+        c.setAttribute("opacity", 0.9*(1-easeOutCubic(prog(pr,0.82,1))));
+      }
+    });
+    const riskVal = Math.round(lerp(0,14, easeOutCubic(prog(ls,12.4,15.0))));
+    $("riskPercent").textContent = riskVal + "%";
+    $("riskPercent").setAttribute("opacity", fadeIn(ls,12.2,13.0));
+
+    BRANCH.forEach(n=>{
+      const g = $("node_"+n.id);
+      const op = fadeIn(ls,n.inS,n.inE);
+      g.setAttribute("opacity", op);
+    });
+    // glow pulse on real-data node once fully in
+    const b2g = $("node_b2");
+    if(ls > BRANCH[1].inE){
+      const pulse = 0.5 + 0.5*Math.sin((ls-BRANCH[1].inE)*2.4);
+      b2g.setAttribute("filter","url(#glow)");
+      b2g.querySelector("rect").setAttribute("stroke", `rgba(95,208,255,${0.5+0.5*pulse})`);
+    }
+    for(let k=0;k<5;k++){
+      const c = $("blinkp_"+k);
+      const localT = ls - 17.8 - k*0.25;
+      const dur = 1.7;
+      if(localT<0 || localT>dur){ c.setAttribute("opacity",0); continue; }
+      const pr = localT/dur;
+      c.setAttribute("cx", lerp(BRANCH[0].x+BRANCH[0].w/2, BRANCH[1].x-BRANCH[1].w/2-36, pr));
+      c.setAttribute("cy", lerp(BRANCH[0].y,BRANCH[1].y,pr));
+      c.setAttribute("opacity", 0.9*(1-easeOutCubic(prog(pr,0.82,1))));
+    }
+  }
+
+  /* ---------------- SCENE 4 ---------------- */
+  const iconsG = $("s4_icons");
+  const ICONS = [];
+  const GOLDEN = 2.399963;
+  const ICOUNT = 90;
+  for(let i=0;i<ICOUNT;i++){
+    const r = 860 * Math.sqrt(i/ICOUNT);
+    const theta = i*GOLDEN;
+    const x = 960 + r*Math.cos(theta);
+    // clamped to 800 so this decorative bloom never dips into the burned-in
+    // caption safe zone (~830-1080)
+    const y = Math.min(540 + r*Math.sin(theta)*0.58, 800);
+    const size = 2 + (i%3);
+    const maxOp = 0.10 + (i%4)*0.03;
+    ICONS.push({x,y,size,maxOp, delay: 0.05 + (i/ICOUNT)*2.6});
+  }
+  ICONS.forEach((p,i)=>{
+    const c = el("circle",{cx:p.x, cy:p.y, r:p.size, fill:"#5fd0ff", opacity:0});
+    c.id = "icon_"+i;
+    iconsG.appendChild(c);
+  });
+
+  function renderScene4(ls){
+    ICONS.forEach((p,i)=>{
+      const u = $("icon_"+i);
+      u.setAttribute("opacity", fadeIn(ls,p.delay,p.delay+0.6)*p.maxOp);
+    });
+    const val = easeOutCubic(prog(ls,0.3,3.4));
+    let display;
+    if(val < 0.97){
+      display = Math.floor(lerp(0,30000000,val)).toLocaleString();
+    } else {
+      display = "30,000,000+";
+    }
+    $("s4_number").textContent = display;
+    $("s4_label").setAttribute("opacity", fadeIn(ls,2.6,3.6));
+    $("s4_sub").setAttribute("opacity", fadeIn(ls,4.6,5.6));
+  }
+
+  /* ---------------- SCENE 5 ---------------- */
+  const s5bubG = $("s5_bubbles");
+  const S5BUB = [];
+  for(let i=0;i<14;i++){
+    S5BUB.push({x: 80+i*130, speed: 18+ (i%4)*6, size: 3+(i%3)*2, phase: i*0.7});
+  }
+  S5BUB.forEach((b,i)=>{
+    const c = el("circle",{r:b.size, fill:"#5fd0ff", opacity:0.18, cx:b.x, cy:1080});
+    c.id = "s5b_"+i;
+    s5bubG.appendChild(c);
+  });
+
+  function renderScene5(ls){
+    $("s5_title").setAttribute("opacity", fadeIn(ls,0.2,1.4));
+    $("s5_title").setAttribute("transform", `translate(0,${lerp(14,0,fadeIn(ls,0.2,1.4))})`);
+    $("s5_rule").setAttribute("opacity", fadeIn(ls,1.0,1.8)*0.7);
+    $("s5_credential").setAttribute("opacity", fadeIn(ls,1.2,2.2));
+    S5BUB.forEach((b,i)=>{
+      const y = 1080 - (((ls*b.speed + b.phase*40) % 1200));
+      $("s5b_"+i).setAttribute("cy", y);
+    });
+  }
+
+  /* ---------------- MASTER LOOP ---------------- */
+  // scene1 grew from 12s to 14.5s (added tension build-up before the soda
+  // can pop), so every scene after it shifts later by the same +2.5s.
+  const scenes = {
+    scene1:[0,14.5], scene2:[14.5,33.5], scene3:[33.5,55.5], scene4:[55.5,63.5], scene5:[63.5,1e9]
+  };
+  let startTime = performance.now();
+
+  function setActive(t){
+    for(const id in scenes){
+      const [s,e] = scenes[id];
+      const active = (t>=s && t<e);
+      const g = $(id);
+      g.classList.toggle("active", active);
+      // explicit opacity attribute: harmless in-browser (the stylesheet's
+      // .scene/.active rules win there), but required for the offline
+      // frame-export pipeline which serializes only the <svg> subtree and
+      // has no access to the page-level <style> stylesheet.
+      g.setAttribute("opacity", active ? 1 : 0);
+    }
+  }
+
+  function renderAt(t){
+    setActive(t);
+    renderScene1(clamp(t,0,14.51));
+    renderScene2(clamp(t-14.5,0,19.01));
+    renderScene3(clamp(t-33.5,0,22.01));
+    renderScene4(clamp(t-55.5,0,8.01));
+    renderScene5(Math.max(0,t-63.5));
+    updateCaption(t);
+  }
+  window.__renderAt = renderAt; // used by the offline frame-export pipeline
+
+  function frame(now){
+    const t = (now - startTime)/1000;
+    renderAt(t);
+    requestAnimationFrame(frame);
+  }
+
+  if(!window.__NO_AUTOPLAY__){
+    requestAnimationFrame(frame);
+    $("replayBtn").addEventListener("click", ()=>{ startTime = performance.now(); });
+    $("captionsBtn").addEventListener("click", (e)=>{
+      captionsOn = !captionsOn;
+      e.target.textContent = "Captions: " + (captionsOn ? "On" : "Off");
+      $("captionBar").classList.toggle("hidden", !captionsOn);
+    });
+  }
+})();
+<\/script>
+<script>
+(function(){
+  var TOTAL=74;
+  var page=document.getElementById('page'), cap=document.getElementById('captionBar'), ctr=document.getElementById('controls');
+  if(cap && page) page.appendChild(cap);
+  if(ctr) ctr.innerHTML='<button id="pplay" class="pctrl">&#9654; Play</button>'+
+    '<div id="pbar"><div id="pfill"></div><div id="pdot"></div></div>'+
+    '<span id="ptime">0:00 / 1:14</span>';
+  var playBtn=document.getElementById('pplay'), bar=document.getElementById('pbar'),
+      fill=document.getElementById('pfill'), dot=document.getElementById('pdot'), time=document.getElementById('ptime');
+  var elapsed=0, base=0, playing=false;
+  function fmt(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+  function draw(){ if(window.__renderAt) window.__renderAt(elapsed);
+    var pc=elapsed/TOTAL*100; fill.style.width=pc+'%'; dot.style.left=pc+'%'; time.textContent=fmt(elapsed)+' / '+fmt(TOTAL); }
+  function setBtn(){ playBtn.innerHTML = playing ? '&#10074;&#10074; Pause' : (elapsed>=TOTAL ? '&#8635; Replay' : '&#9654; Play'); }
+  function tick(now){ if(!playing) return; elapsed=(now-base)/1000;
+    if(elapsed>=TOTAL){ elapsed=TOTAL; playing=false; draw(); setBtn(); return; }
+    draw(); requestAnimationFrame(tick); }
+  function play(){ if(playing) return; if(elapsed>=TOTAL) elapsed=0; base=performance.now()-elapsed*1000; playing=true; setBtn(); requestAnimationFrame(tick); }
+  function pause(){ playing=false; setBtn(); }
+  playBtn.onclick=function(){ playing?pause():play(); };
+  function seek(cx){ var r=bar.getBoundingClientRect(); var f=Math.max(0,Math.min(1,(cx-r.left)/r.width));
+    elapsed=f*TOTAL; base=performance.now()-elapsed*1000; draw(); setBtn(); }
+  bar.addEventListener('pointerdown',function(e){ e.preventDefault(); seek(e.clientX);
+    var mv=function(ev){ seek(ev.clientX); }, up=function(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); };
+    document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); });
+  draw(); setBtn();
+})();
+<\/script>
+</body>
+</html>
+</script>
+<script>
+/* ================================================================
+   DecoStress — decompression-risk explorer (educational).
+   Synthetic multi-compartment tissue-loading model -> decompression
+   stress -> logistic P(DCS). NOT validated, NOT a dive planner.
+   ================================================================ */
+const $=id=>document.getElementById(id);
+
+/* ================================================================
+   REAL MODEL — everything below is fitted or tabulated, not invented.
+   Generated by scripts/export_web_model.py in DCS_PINN_DATASET_V3.
+   Do not hand-tune these numbers.
+   ================================================================ */
+
+/* Bühlmann ZHL-16C nitrogen table: [half-time min, a (bar), b].
+   The real 16 compartments, replacing the 6 invented ones. */
+const ZHL = [
+  [4.0,1.2599,0.5050],[8.0,1.0000,0.6514],[12.5,0.8618,0.7222],[18.5,0.7562,0.7825],
+  [27.0,0.6200,0.8126],[38.3,0.5043,0.8434],[54.3,0.4410,0.8693],[77.0,0.4000,0.8910],
+  [109.0,0.3750,0.9092],[146.0,0.3500,0.9222],[187.0,0.3295,0.9319],[239.0,0.3065,0.9403],
+  [305.0,0.2835,0.9477],[390.0,0.2610,0.9544],[498.0,0.2480,0.9602],[635.0,0.2327,0.9653]
+];
+const HALF = ZHL.map(r=>r[0]);
+const A_C  = ZHL.map(r=>r[1]);
+const B_C  = ZHL.map(r=>r[2]);
+const NC   = ZHL.length;
+
+const FN2=0.79;
+const P_SURFACE=1.01325;        // bar
+const FSW_TO_BAR=0.030643;      // 33.07 fsw = 1 atm
+const M_TO_FSW=1/(10*FSW_TO_BAR); // 3.2634 — keeps 10 m == 1 bar
+
+const ambBar   = m => P_SURFACE + m*M_TO_FSW*FSW_TO_BAR;  // depth in metres -> bar
+const inspN2   = m => FN2*ambBar(m);                      // alveolar N2 (bar)
+/* Bühlmann M-value: the most tissue tension tolerated at this ambient pressure. */
+const mValue   = (pAmb,c) => A_C[c] + pAmb/B_C[c];
+/* Surfacing limit: the M-value at the surface. Ratio >= 1 means the tissue
+   exceeds what Bühlmann says it can hold when it gets there. */
+const mSurface = c => mValue(P_SURFACE,c);
+
+/* ---- the fitted DCS model ----------------------------------------
+   Logistic on the ONLY three variables that carry real signal:
+   depth (fsw), bottom time (min), ascent time (min).
+   Fitted to 1,948 real NMRC 99-02 dives, 305 of which ended in DCS.
+
+   Honest out-of-sample skill: grouped-CV AUC = 0.6425 +- 0.0532.
+   That is a RANKING skill. 0.5 is a coin flip. A useful clinical test
+   is 0.85+. This model is weak, and the app must say so.
+
+   It emits a PERCENTILE, never a probability. The ~16% DCS rate in
+   these data comes from Navy trials designed to provoke DCS; a
+   probability derived from them is meaningless for a real diver.
+
+   !! THE ASCENT-TIME COEFFICIENT IS A CONFOUND, NOT ADVICE !!
+   ascent_time dominates (+0.537) and is POSITIVE. In these data
+   ascent time is largely the *prescribed decompression obligation* --
+   dives needing long deco were the provocative ones. It is a marker of
+   dive severity. It does NOT mean ascending slowly causes DCS. Read
+   causally it inverts real safety advice, so the UI flags it wherever
+   it moves the number.
+------------------------------------------------------------------- */
+const RM = {
+  mean:  [126.987269, 61.232238, 39.733830],   // depth_fsw, bottom_min, ascent_min
+  scale: [ 54.629949, 61.696358, 48.184397],
+  coef:  [  0.007436,  0.171359,  0.536742],
+  intercept: -1.796621,
+  auc: 0.6425, aucSd: 0.0532, n: 1948, nDcs: 305,
+  /* Observed DCS rate by score decile, in this Navy cohort only.
+     Note how non-monotonic the middle is -- that is what 0.64 looks like. */
+  decile: [0.0104,0.1111,0.1510,0.0918,0.0714,0.0821,0.1406,0.2865,0.2816,0.3367]
+};
+/* Score quantiles across the 1,948 real dives: maps a score -> percentile. */
+const RM_Q = [-2.41581,-2.38724,-2.37276,-2.36088,-2.35811,-2.34791,-2.33584,-2.32970,-2.31743,-2.31357,-2.30917,-2.30473,-2.30130,-2.29855,-2.29368,-2.28668,-2.28241,-2.27816,-2.27316,-2.26637,-2.26095,-2.25601,-2.25098,-2.24358,-2.24129,-2.23926,-2.23343,-2.22955,-2.22707,-2.22524,-2.21566,-2.20481,-2.19900,-2.19230,-2.18565,-2.17047,-2.15872,-2.15123,-2.14630,-2.13381,-2.12585,-2.11267,-2.10550,-2.09855,-2.08408,-2.07600,-2.06418,-2.05040,-2.03545,-2.01813,-2.00317,-1.99142,-1.97047,-1.94438,-1.92364,-1.89549,-1.86785,-1.84337,-1.82952,-1.79868,-1.77303,-1.74908,-1.74715,-1.74360,-1.73762,-1.73285,-1.72136,-1.70965,-1.69501,-1.66746,-1.65141,-1.62983,-1.59162,-1.57436,-1.54906,-1.50571,-1.49346,-1.44263,-1.40880,-1.38600,-1.37486,-1.36366,-1.34298,-1.32733,-1.28557,-1.25950,-1.20901,-1.19699,-1.17625,-1.12485,-1.03647,-0.99768,-0.92537,-0.89630,-0.77128,-0.66148,-0.54303,-0.35232,0.11998,0.44408,0.93243];
+
+/* ---- decompression obligation (the real one) ------------------------------
+   Ported from benchmark/profile.py::_schedule -- the ceiling-driven ascent.
+   From the current tissue state, repeatedly: if the Bühlmann ceiling is
+   shallower than where you are, travel up to it at 30 fsw/min; otherwise hold
+   a 10-fsw stop until it clears. The total is the ascent the physics DEMANDS.
+
+   This is the key to using the fitted model honestly. In the Navy trials
+   ascent time was never the diver's choice -- it was the prescribed schedule.
+   Feed the model an ascent time the diver invented and it inverts (a fast
+   ascent looks "safe"). Feed it the OBLIGATION and it is correctly signed:
+   deeper and longer -> bigger obligation -> higher risk. Verified monotonic in
+   both depth and bottom time.                                                */
+const ASCENT_FSW_PER_MIN=30.0, DESCENT_FSW_PER_MIN=60.0, STOP_FSW=10.0, DT_SCHED=0.5;
+const K_C = HALF.map(h=>Math.LN2/h);
+
+function ceilingFsw(P){
+  let tol=-Infinity;
+  for(let c=0;c<NC;c++) tol=Math.max(tol,(P[c]-A_C[c])*B_C[c]);   // gf = 1.0
+  return Math.max(0,(tol-P_SURFACE)/FSW_TO_BAR);
+}
+function haldane(P,pAlv,dt){
+  const out=new Array(NC);
+  for(let c=0;c<NC;c++) out[c]=pAlv+(P[c]-pAlv)*Math.exp(-K_C[c]*dt);
+  return out;
+}
+const alvAtFsw = fsw => (P_SURFACE+fsw*FSW_TO_BAR)*FN2;
+
+/* Minutes of ascent the ceiling demands from this tissue state at this depth.
+   This is a dive computer's "time to surface". */
+function requiredAscentMin(P, depthFsw){
+  let d=depthFsw, travel=0, stop=0;
+  let Pt=P.slice();
+  for(let i=0;i<4000;i++){
+    if(d<=0) break;
+    const target=Math.min(Math.ceil(ceilingFsw(Pt)/STOP_FSW)*STOP_FSW, d);
+    if(target<d){
+      const dt=(d-target)/ASCENT_FSW_PER_MIN;
+      Pt=haldane(Pt,alvAtFsw((d+target)/2),dt);
+      travel+=dt; d=target;
+    }else{
+      Pt=haldane(Pt,alvAtFsw(d),DT_SCHED);
+      stop+=DT_SCHED;
+    }
+  }
+  return {total:travel+stop, travel, stop};
+}
+/* Tissue state after descending to depth and sitting there for bottomMin. */
+function loadToBottom(depthFsw, bottomMin){
+  let P=new Array(NC).fill(P_SURFACE*FN2);
+  const desc=Math.max(depthFsw/DESCENT_FSW_PER_MIN,DT_SCHED);
+  const n=Math.max(Math.ceil(desc/DT_SCHED),1);
+  for(let i=0;i<n;i++) P=haldane(P,alvAtFsw(depthFsw*(i+1)/n),desc/n);
+  const nb=Math.max(Math.ceil(bottomMin/DT_SCHED),1);
+  for(let i=0;i<nb;i++) P=haldane(P,alvAtFsw(depthFsw),bottomMin/nb);
+  return P;
+}
+
+/* Reduce any profile to the three scalars the model was fitted on.
+   USN convention: bottom time runs from leaving the surface to the start
+   of the final ascent; ascent time is the rest. */
+function diveScalars(poly){
+  if(!poly || poly.length<2) return null;
+  const tEnd=poly[poly.length-1].t;
+  const maxD=Math.max.apply(null,poly.map(p=>p.d));
+
+  /* USN convention: bottom time runs from leaving the surface until the diver
+     leaves the bottom for the last time; everything after that -- including any
+     decompression or safety stops -- is ascent. So the split is the LAST moment
+     spent at max depth. (Walking back over the final descent instead swallows the
+     flat bottom, or mistakes a safety stop for bottom time.) */
+  let iLeave=0;
+  for(let j=0;j<poly.length;j++) if(poly[j].d >= maxD-1e-9) iLeave=j;
+  const bottom=Math.max(poly[iLeave].t, 0.1);
+  const ascent=Math.max(tEnd-poly[iLeave].t, 0.1);
+
+  /* Out of distribution: the model saw square bounce dives. Reducing a
+     multi-level or sawtooth profile to three scalars silently throws its shape
+     away, so detect a RE-DESCENT (the diver went back down after coming up).
+     Compress flats first -- a flat bottom otherwise splits the peak and hides it. */
+  const seq=[];
+  for(const q of poly) if(!seq.length || Math.abs(q.d-seq[seq.length-1])>0.5) seq.push(q.d);
+  let redescents=0, wentUp=false;
+  for(let j=1;j<seq.length;j++){
+    if(seq[j] < seq[j-1]) wentUp=true;              // rising toward the surface
+    else if(seq[j] > seq[j-1] && wentUp) redescents++;  // back down again
+  }
+  return {depthFsw:maxD*M_TO_FSW, bottom, ascent, maxDepthM:maxD, multilevel:redescents>=1};
+}
+/* Standardise -> linear score -> percentile within the real cohort.
+   NOTE sc.ascent here MUST be the required obligation, not the diver's choice. */
+function realScore(sc){
+  const x=[sc.depthFsw, sc.bottom, sc.ascent];
+  let z=RM.intercept;
+  for(let i=0;i<3;i++) z += RM.coef[i]*((x[i]-RM.mean[i])/RM.scale[i]);
+  return z;
+}
+
+/* THE REAL PREDICTION.
+   Scores a profile the way the Navy data was actually generated: the dive
+   determines an obligation, and the obligation is what the model sees.
+   Also reports whether the diver actually HONOURED that obligation -- if they
+   surfaced early, the dive is off the map (no Navy diver skipped their deco,
+   so the model has never seen such a dive and must not be asked about it). */
+function predict(poly){
+  const sc=diveScalars(poly);
+  if(!sc) return null;
+  const P=loadToBottom(sc.depthFsw, sc.bottom);
+  const req=requiredAscentMin(P, sc.depthFsw);
+  const scored={depthFsw:sc.depthFsw, bottom:sc.bottom, ascent:req.total};
+  const score=realScore(scored);
+  const deficit=req.total - sc.ascent;          // minutes of obligation skipped
+  return {
+    score, pct:percentileOf(score),
+    depthFsw:sc.depthFsw, bottom:sc.bottom,
+    requiredAscent:req.total, requiredStops:req.stop, actualAscent:sc.ascent,
+    deficit, violated: deficit > 0.5,
+    multilevel: sc.multilevel,
+    drivers: realDrivers(scored),
+    cohortRate: cohortDecileRate(percentileOf(score))
+  };
+}
+function percentileOf(score){
+  if(score<=RM_Q[0]) return 0;
+  if(score>=RM_Q[RM_Q.length-1]) return 1;
+  for(let i=1;i<RM_Q.length;i++){
+    if(score<=RM_Q[i]){
+      const lo=RM_Q[i-1], hi=RM_Q[i], f=hi>lo?(score-lo)/(hi-lo):0;
+      return ((i-1)+f)/(RM_Q.length-1);
+    }
+  }
+  return 1;
+}
+/* Which of the three actually moved this dive's score, in standardised units. */
+function realDrivers(sc){
+  const x=[sc.depthFsw, sc.bottom, sc.ascent];
+  const names=['max depth','bottom time','ascent time'];
+  return names.map((n,i)=>({
+    name:n,
+    z: RM.coef[i]*((x[i]-RM.mean[i])/RM.scale[i]),
+    confounded: i===2
+  })).sort((a,b)=>Math.abs(b.z)-Math.abs(a.z));
+}
+function cohortDecileRate(pct){
+  return RM.decile[Math.max(0,Math.min(9,Math.floor(pct*10)))];
+}
+
+const MIN_PER_SEC=0.75;
+const depthRate=()=>+$('rate').value;
+const flags={pfo:0,dehy:0,tired:0,fit:1};
+
+let state='idle';
+let depth=0, diveTime=0, maxDepth=0, prevDepth=0, vinst=0;
+let tissue=HALF.map(()=>inspN2(0));
+let points=[{t:0,d:0}];
+let history=[];
+let editNodes=null;
+const keys={up:false,down:false};
+let dragMode=null, dragNode=-1, dragTargetDepth=0;
+let scrubP=null, scrubD=null;
+let lastMs=performance.now();
+let displayedP=0, targetP=0, lastBandKey='minimal', lastLiveBand='';
+let hinted=false, paused=false;
+let gameHot=false, gameFocused=false;
+let lastAssess=null;
+let mode='fly';
+let manualSegs=[];
+
+/* ---- model math ----
+   Decompression stress is now REAL Bühlmann: tissue tension over the
+   ZHL-16C surfacing M-value. Ratio >= 1 means a compartment exceeds what
+   the table says it may hold at the surface.
+
+   Note this is only the VISUALISATION. Bühlmann's risk index scored
+   NOT SUPPORTED against real outcomes (ΔAUC +0.007, p=0.20) -- correct
+   physics, no predictive power. The number on the dial comes from the
+   fitted model instead, which is why stress and percentile can disagree.
+   That disagreement is the honest finding, not a bug.                     */
+function currentStress(){
+  let st=0, li=0;
+  for(let c=0;c<NC;c++){ const r=tissue[c]/mSurface(c); if(r>st){st=r;li=c;} }
+  return {st, li};
+}
+/* The real model's verdict on a whole profile: a percentile, never a P(DCS). */
+function riskFromProfile(poly){
+  const sc=diveScalars(poly);
+  if(!sc) return {pct:0, score:0, scalars:null, drivers:[], cohortRate:0};
+  const score=realScore(sc);
+  const pct=percentileOf(score);
+  return {pct, score, scalars:sc, drivers:realDrivers(sc), cohortRate:cohortDecileRate(pct)};
+}
+function simulatePolyline(poly){
+  let t=HALF.map(()=>inspN2(0)); const dt=0.02;
+  for(let i=1;i<poly.length;i++){
+    const a=poly[i-1], b=poly[i], span=b.t-a.t, steps=Math.max(1,Math.round(span/dt));
+    for(let s=1;s<=steps;s++){ const dd=a.d+(b.d-a.d)*(s/steps), pi=inspN2(dd);
+      for(let c=0;c<NC;c++){ const k=1-Math.pow(2,-(span/steps)/HALF[c]); t[c]+=(pi-t[c])*k; } }
+  }
+  let st=0,li=0; for(let c=0;c<NC;c++){ const r=t[c]/mSurface(c); if(r>st){st=r;li=c;} }
+  return {st,li,tissue:t};
+}
+/* Live prediction, mid-dive. The obligation is computed from the tissues as
+   they are RIGHT NOW -- this is a genuine time-to-surface, the same quantity a
+   dive computer shows. The model then scores that obligation. Stay down longer
+   and the obligation grows, so the number rises. Correctly signed by
+   construction: there is no way to talk it down by planning a fast ascent. */
+function liveRisk(maxD, tNow, curDepth, tissueNow){
+  const depthFsw=Math.max(maxD,curDepth)*M_TO_FSW;
+  const P = tissueNow ? tissueNow.slice() : loadToBottom(depthFsw, Math.max(tNow,0.1));
+  const req=requiredAscentMin(P, curDepth*M_TO_FSW);
+  const sc={depthFsw, bottom:Math.max(tNow,0.1), ascent:req.total};
+  const score=realScore(sc);
+  return {pct:percentileOf(score), score, scalars:sc,
+          requiredAscent:req.total, requiredStops:req.stop};
+}
+function simulateHistory(poly){
+  let t=HALF.map(()=>inspN2(0)); const dt=0.05; const hist=[]; let rec=-1; let mx=0;
+  const rate=Math.max(1,depthRate());
+  for(let i=1;i<poly.length;i++){
+    const a=poly[i-1], b=poly[i], span=b.t-a.t, steps=Math.max(1,Math.round(span/dt));
+    for(let s=1;s<=steps;s++){ const tt=a.t+span*(s/steps), dd=a.d+(b.d-a.d)*(s/steps), pi=inspN2(dd);
+      for(let c=0;c<NC;c++){ const k=1-Math.pow(2,-(span/steps)/HALF[c]); t[c]+=(pi-t[c])*k; }
+      mx=Math.max(mx,dd);
+      if(tt-rec>=0.1){ rec=tt;
+        /* The curve plots the model's live prediction -- scored on the deco
+           obligation implied by the tissues at that instant, so it rises the
+           longer you stay down. */
+        hist.push({t:tt,d:dd,p:liveRisk(mx,Math.max(tt,0.1),dd,t).pct}); } }
+  }
+  let st=0,li=0; for(let c=0;c<NC;c++){ const r=t[c]/mSurface(c); if(r>st){st=r;li=c;} }
+  return {history:hist, tissue:t, st, li};
+}
+/* No-decompression limit from the REAL ZHL-16C surfacing M-values. */
+function ndlMinutes(){
+  const pi=inspN2(depth); let best=Infinity;
+  for(let c=0;c<NC;c++){
+    const lim=mSurface(c);
+    if(pi<=lim) continue;                 // can never breach this one at this depth
+    if(tissue[c]>=lim){ best=0; continue; }
+    const frac=(pi-lim)/(pi-tissue[c]);
+    const tm=-HALF[c]*Math.log2(frac);
+    if(tm<best) best=tm;
+  }
+  return best;
+}
+function dialFrac(p){ return Math.max(0,Math.min(1,p)); }   // percentile maps linearly
+const REF_PROFILE=[{t:0,d:0},{t:1.5,d:18},{t:40,d:18},{t:43,d:5},{t:46,d:5},{t:47,d:0}];
+function referencePct(){ return riskFromProfile(REF_PROFILE).pct; }
+
+/* ---- presets ---- */
+const PRESETS=[
+  {name:'Recreational, by the book', desc:'18 m · 40 min · slow ascent + 3-min safety stop',
+   poly:[{t:0,d:0},{t:1.5,d:18},{t:40,d:18},{t:43,d:5},{t:46,d:5},{t:47,d:0}]},
+  {name:'Deep bounce, straight up', desc:'40 m · 8 min · direct fast ascent, no stop',
+   poly:[{t:0,d:0},{t:2.2,d:40},{t:10,d:40},{t:11.3,d:0}]},
+  {name:'Sawtooth profile', desc:'30 m repeatedly up-and-down — a classic bad habit',
+   poly:[{t:0,d:0},{t:1.7,d:30},{t:8,d:30},{t:9,d:10},{t:12,d:10},{t:13,d:30},{t:20,d:30},{t:22,d:0}]},
+  {name:'Missed the safety stop', desc:'30 m · 20 min · straight to the surface',
+   poly:[{t:0,d:0},{t:2,d:30},{t:20,d:30},{t:21,d:0}]},
+];
+function buildPresets(){
+  const box=$('presets');
+  PRESETS.forEach(pr=>{ const b=document.createElement('button'); b.className='preset';
+    b.innerHTML='<b>'+pr.name+'</b><span>'+pr.desc+'</span>';
+    b.onclick=()=>loadProfile(pr.poly); box.appendChild(b); });
+}
+function loadProfile(poly){
+  resetGame(true);
+  const sim=simulateHistory(poly);
+  points=poly.map(p=>({t:p.t,d:p.d}));
+  history=sim.history; tissue=sim.tissue;
+  depth=0; diveTime=poly[poly.length-1].t; maxDepth=Math.max.apply(null,poly.map(p=>p.d));
+  state='done'; buildEditNodes();
+  setStatus('analysed','var(--muted)');
+  $('log').innerHTML='Loaded scenario. Scrub the replay, edit the profile, or change the diver and re-analyse.';
+  $('postbar').classList.add('show');
+  showAssessment(sim.st, sim.li);
+}
+
+/* ---- real-time exploration ---- */
+function startDive(){
+  if(state!=='idle') return;
+  hinted=true; $('descBtn').classList.remove('nudge');
+  state='diving'; depth=0; diveTime=0; maxDepth=0; prevDepth=0; paused=false;
+  $('pauseChip').classList.remove('show');
+  tissue=HALF.map(()=>inspN2(0)); points=[{t:0,d:0}]; history=[]; editNodes=null;
+  $('postbar').classList.remove('show'); hideAssessment(); scrubP=scrubD=null;
+  setStatus('diving','var(--cyan)');
+  $('log').innerHTML='Diving. Hold <span>▲ Ascend</span> or drag the diver up — return to <span>0 m</span> to surface.';
+}
+function endDive(){
+  state='done'; paused=false; $('pauseChip').classList.remove('show');
+  points.push({t:diveTime,d:0});
+  keys.up=keys.down=false; setActive('descBtn',false); setActive('ascBtn',false);
+  const cs=currentStress();
+  buildEditNodes();
+  setStatus('surfaced','var(--muted)');
+  $('postbar').classList.add('show');
+  $('log').innerHTML='Surfaced. See the assessment below, then scrub, edit, or start a new profile.';
+  showAssessment(cs.st, cs.li);
+}
+function resetGame(silent){
+  state='idle'; depth=0; diveTime=0; maxDepth=0; prevDepth=0; vinst=0; paused=false;
+  $('pauseChip').classList.remove('show');
+  tissue=HALF.map(()=>inspN2(0)); points=[{t:0,d:0}]; history=[]; editNodes=null;
+  keys.up=keys.down=false; setActive('descBtn',false); setActive('ascBtn',false);
+  scrubP=scrubD=null; $('postbar').classList.remove('show');
+  $('scrubBtn').classList.remove('on'); $('editBtn').classList.remove('on');
+  hideAssessment();
+  if(!silent){ setStatus('ready','var(--muted)');
+    $('log').innerHTML='Load a scenario on the left, or hold <span>▼ Descend</span> to leave the surface.'; }
+}
+function setStatus(txt,col){ const el=$('statusTag'); el.textContent=txt; el.style.color=col; }
+function setActive(id,on){ $(id).classList.toggle('active',on); }
+function togglePause(){
+  if(state!=='diving') return;
+  paused=!paused; $('pauseChip').classList.toggle('show',paused);
+  setStatus(paused?'paused':'diving', paused?'var(--amber)':'var(--cyan)');
+}
+function physics(dtReal){
+  const dtMin=dtReal*MIN_PER_SEC;
+  diveTime+=dtMin; prevDepth=depth;
+  const rate=depthRate();
+  if(dragMode==='diver'){
+    const step=rate*dtMin, diff=dragTargetDepth-depth;
+    depth = Math.abs(diff)<=step ? dragTargetDepth : depth+Math.sign(diff)*step;
+    depth=Math.max(0,Math.min(45,depth));
+  }else{
+    let v=0; if(keys.down)v+=rate; if(keys.up)v-=rate;
+    depth=Math.max(0,Math.min(45,depth+v*dtMin));
+  }
+  vinst=dtMin>0?(depth-prevDepth)/dtMin:0;
+  maxDepth=Math.max(maxDepth,depth);
+  const pi=inspN2(depth);
+  for(let c=0;c<HALF.length;c++){ const k=1-Math.pow(2,-dtMin/HALF[c]); tissue[c]+=(pi-tissue[c])*k; }
+  const p=liveRisk(maxDepth, Math.max(diveTime,0.1), depth, tissue).pct;
+  if(!history.length || diveTime-history[history.length-1].t>=0.04){
+    points.push({t:diveTime,d:depth}); history.push({t:diveTime,d:depth,p});
+  }
+  if(maxDepth>2 && depth<=0.02){ endDive(); }
+}
+function frame(now){
+  const dtReal=Math.min(0.1,(now-lastMs)/1000); lastMs=now;
+  if(state==='diving' && !paused) physics(dtReal);
+  refreshValues(); smooth(dtReal); drawScene();
+  requestAnimationFrame(frame);
+}
+function refreshValues(){
+  let st,li,p,score,driver,tts=0;
+  if(state==='scrub' && scrubP!=null){ st=scrubStress; li=scrubLi; p=scrubP; score=scrubLogit; driver=scrubDriver; }
+  else{
+    const cs=currentStress(); st=cs.st; li=cs.li;
+    /* THE DIAL IS THE MODEL'S REAL PREDICTION.
+       It is safe to put here only because the ascent it scores is the
+       decompression OBLIGATION (computed from the tissues), never a number the
+       diver picked. That makes it monotonic: deeper or longer always raises it,
+       and no fast-ascent trick can talk it down. */
+    const r = (state==='done'||state==='edit')
+      ? predict(points)
+      : liveRisk(maxDepth, Math.max(diveTime,0.1), depth, tissue);
+    p = r ? r.pct : 0;
+    score = r ? r.score : 0;
+    tts = r ? (r.requiredAscent||0) : 0;
+    driver = (r && r.drivers && r.drivers.length) ? r.drivers[0].name : '—';
+  }
+  targetP=p;
+  const active = diveTime>0 || state==='done' || state==='scrub';
+  $('dssg').textContent=st.toFixed(2)+'×';
+  $('lead').textContent = active ? ('#'+(li+1)+' ('+HALF[li]+'-min)') : '—';
+  $('driver').textContent = active ? (tts>0.05? tts.toFixed(1)+' min' : 'none') : '—';
+  $('logit').textContent = (score<0?'−':'')+Math.abs(score).toFixed(2);
+
+  const shownDepth = (state==='scrub'&&scrubD!=null)?scrubD:depth;
+  $('gDepth').textContent=shownDepth.toFixed(0);
+  $('gTime').textContent=diveTime.toFixed(1);
+  const ndl=ndlMinutes();
+  $('gNdl').textContent = (state==='diving') ? (ndl===Infinity?'∞':(ndl>99?'99+':ndl.toFixed(0))) : '∞';
+  const arate=Math.max(0,-vinst);
+  $('gRate').textContent = state==='diving' ? arate.toFixed(0) : '0';
+  const ab=$('arrowBox'), icon=ab.querySelector('use');
+  if(state==='diving' && vinst<-0.3){ icon.setAttribute('href','#i-up');
+    if(arate>18){ ab.style.background='rgba(226,87,76,.18)'; ab.style.color='var(--risk)'; }
+    else if(arate>10){ ab.style.background='rgba(242,166,58,.18)'; ab.style.color='var(--amber)'; }
+    else { ab.style.background='rgba(47,191,158,.16)'; ab.style.color='var(--safe)'; }
+  }else if(state==='diving' && vinst>0.3){ icon.setAttribute('href','#i-down'); ab.style.background='rgba(31,199,212,.14)'; ab.style.color='var(--cyan)'; }
+  else{ icon.setAttribute('href','#i-hold'); ab.style.background='rgba(107,147,165,.14)'; ab.style.color='var(--muted)'; }
+  updateComps();
+}
+function smooth(dtReal){
+  displayedP += (targetP-displayedP)*Math.min(1,dtReal*6);
+  if(Math.abs(targetP-displayedP)<0.0002) displayedP=targetP;
+  const p=displayedP;   // the model's percentile among 1,948 real Navy dives
+  $('pct').innerHTML=Math.round(p*100)+'<i>th</i>';
+  const frac=dialFrac(p);
+  $('arc').style.strokeDashoffset=540-frac*540;
+  $('needle').setAttribute('transform','rotate('+(frac*360)+' 105 105)');
+
+  const active = diveTime>0 || state==='done' || state==='scrub';
+  let col,band,bg,key;
+  if(!active){col='#2fbf9e';band='AT SURFACE';bg='rgba(47,191,158,.15)';key='minimal';}
+  else if(p<0.34){col='#2fbf9e';band='MILDER THAN MOST NAVY DIVES';bg='rgba(47,191,158,.15)';key='low';}
+  else if(p<0.67){col='#f2a63a';band='MID-RANGE FOR NAVY DIVES';bg='rgba(242,166,58,.15)';key='mod';}
+  else{col='#e2574c';band='HARSHER THAN MOST NAVY DIVES';bg='rgba(226,87,76,.15)';key='hi';}
+  $('arc').setAttribute('stroke',col);
+  const b=$('band'); b.textContent=band; b.style.background=bg; b.style.color=col;
+  if(key!==lastBandKey){ lastBandKey=key; pulseDial(); }
+  if(band!==lastLiveBand){ lastLiveBand=band; $('riskLive').textContent=Math.round(p*100)+'th percentile of 1,948 real Navy dives. '+band+'.'; }
+
+  const vig=$('vignette');
+  if(!active || p<0.34){ vig.style.boxShadow='inset 0 0 1px 1px rgba(0,0,0,0)'; }
+  else{ const strength=Math.min(1,(p-0.34)/0.5); const rgb = p<0.67 ? '242,166,58' : '226,87,76';
+    vig.style.boxShadow='inset 0 0 '+(60+strength*90)+'px '+(6+strength*24)+'px rgba('+rgb+','+(0.10+strength*0.30).toFixed(3)+')'; }
+  updateColumn(dtReal);
+}
+function pulseDial(){ const w=$('dialwrap'); w.classList.remove('pulse'); void w.offsetWidth; w.classList.add('pulse'); }
+function fmtPct(p){ const v=p*100; return v<10?v.toFixed(1):Math.round(v).toString(); }
+
+/* ---- compartment bars ---- */
+let compsBuilt=false;
+function buildComps(){
+  const box=$('comps'); box.innerHTML='';
+  HALF.forEach((h,i)=>{ const row=document.createElement('div'); row.className='comp';
+    row.innerHTML='<span class="cl">'+h+'-min</span>'+
+      '<span class="comptrack"><span class="compfill" id="cf'+i+'"></span><span class="complim" id="cl'+i+'"></span></span>'+
+      '<span class="cv" id="cv'+i+'">—</span>';
+    box.appendChild(row); });
+  compsBuilt=true;
+}
+function updateComps(){
+  if(!compsBuilt) buildComps();
+  const AX=1.5;
+  for(let i=0;i<HALF.length;i++){
+    const ratio=tissue[i]/mSurface(i);
+    const f=$('cf'+i), lim=$('cl'+i), v=$('cv'+i);
+    f.style.width=Math.min(100,ratio/AX*100)+'%';
+    lim.style.left=(1.0/AX*100)+'%';
+    v.textContent=ratio.toFixed(2)+'×';
+    f.style.background = ratio>=1.0 ? 'var(--risk)' : ratio>=0.85 ? 'var(--amber)' : 'var(--safe)';
+    v.style.color = ratio>=1.0 ? 'var(--risk)' : 'var(--ink)';
+  }
+}
+
+/* ---- water column ---- */
+let rulerBuilt=false, bubbleT=0;
+function buildRuler(){ const r=$('ruler'); r.innerHTML='';
+  for(let d=0;d<=45;d+=15){ const el=document.createElement('div'); el.textContent=d; el.style.top=(4+(d/45)*92)+'%'; r.appendChild(el); }
+  rulerBuilt=true;
+}
+function updateColumn(dtReal){
+  if(!rulerBuilt) buildRuler();
+  const shownDepth=(state==='scrub'&&scrubD!=null)?scrubD:depth;
+  const col=$('watercol'); const H=col.clientHeight||300;
+  const top=4+(shownDepth/45)*(H-14);
+  $('diver').style.top=top+'px';
+  if(state==='diving' && !paused && vinst<-3){ bubbleT+=dtReal;
+    if(bubbleT>0.09){ bubbleT=0; spawnBubble(top); } }
+}
+function spawnBubble(fromTop){
+  const layer=$('bubbles'); const b=document.createElement('div'); b.className='cbub';
+  const W=$('watercol').clientWidth||78;
+  b.style.left=(20+Math.random()*(W-40))+'px';
+  b.style.bottom=(($('watercol').clientHeight||300)-fromTop)+'px';
+  b.style.animationDuration=(1.1+Math.random()*0.7)+'s';
+  layer.appendChild(b); setTimeout(()=>b.remove(),1900);
+}
+
+/* ---- canvas ---- */
+const cv=$('chart'), ctx=cv.getContext('2d');
+const PAD={l:40,r:38,t:14,b:26};
+function axisMaxT(){ return Math.max(20, Math.ceil((Math.max(diveTime, points[points.length-1].t)+2)/10)*10); }
+function xOf(t){ return PAD.l+(t/axisMaxT())*(cv.width-PAD.l-PAD.r); }
+function yOf(d){ return PAD.t+(d/45)*(cv.height-PAD.t-PAD.b); }
+function yRisk(p){ return PAD.t+(1-dialFrac(p))*(cv.height-PAD.t-PAD.b); }
+function tOfX(x){ return ((x-PAD.l)/(cv.width-PAD.l-PAD.r))*axisMaxT(); }
+function dOfY(y){ return Math.max(0,Math.min(45,((y-PAD.t)/(cv.height-PAD.t-PAD.b))*45)); }
+function drawScene(){
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const g=ctx.createLinearGradient(0,PAD.t,0,H-PAD.b);
+  g.addColorStop(0,'rgba(31,199,212,.06)');g.addColorStop(1,'rgba(7,26,38,0)');
+  ctx.fillStyle=g;ctx.fillRect(PAD.l,PAD.t,W-PAD.l-PAD.r,H-PAD.t-PAD.b);
+
+  ctx.strokeStyle='#1c4257';ctx.fillStyle='#6b93a5';ctx.font='11px IBM Plex Mono, monospace';ctx.lineWidth=1;
+  for(let d=0;d<=45;d+=15){ ctx.beginPath();ctx.moveTo(PAD.l,yOf(d));ctx.lineTo(W-PAD.r,yOf(d));ctx.stroke();
+    ctx.textAlign='right';ctx.fillText(d+'m',PAD.l-6,yOf(d)+4); }
+  const mt=axisMaxT();
+  for(let t=0;t<=mt;t+=10){ ctx.globalAlpha=.4;ctx.beginPath();ctx.moveTo(xOf(t),PAD.t);ctx.lineTo(xOf(t),H-PAD.b);ctx.stroke();ctx.globalAlpha=1;
+    ctx.textAlign='center';ctx.fillText(t,xOf(t),H-PAD.b+16); }
+  ctx.textAlign='center';ctx.fillText('minutes',(PAD.l+W-PAD.r)/2,H-4);
+  ctx.fillStyle='rgba(242,166,58,.75)';ctx.textAlign='left';
+  [[0,'0'],[0.5,'50th'],[1,'100th']].forEach(function(a){ ctx.fillText(a[1],W-PAD.r+5,yRisk(a[0])+4); });
+
+  const poly = (state==='edit'&&editNodes)?editNodes:points;
+  ctx.fillStyle='rgba(31,199,212,.08)';ctx.beginPath();ctx.moveTo(xOf(poly[0].t),yOf(0));
+  poly.forEach(pt=>ctx.lineTo(xOf(pt.t),yOf(pt.d)));ctx.lineTo(xOf(poly[poly.length-1].t),yOf(0));ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#1fc7d4';ctx.lineWidth=2.5;ctx.beginPath();
+  poly.forEach((pt,i)=>{ i?ctx.lineTo(xOf(pt.t),yOf(pt.d)):ctx.moveTo(xOf(pt.t),yOf(pt.d)); });ctx.stroke();
+
+  if(history.length>1){ ctx.strokeStyle='rgba(242,166,58,.9)';ctx.lineWidth=1.6;ctx.beginPath();
+    history.forEach((h,i)=>{ const x=xOf(h.t), y=yRisk(h.p); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });ctx.stroke(); }
+
+  ctx.font='10px IBM Plex Mono, monospace';ctx.textAlign='left';
+  ctx.fillStyle='#1fc7d4';ctx.fillText('■ depth',PAD.l+2,PAD.t+11);
+  ctx.fillStyle='#f2a63a';ctx.fillText('■ P(DCS)',PAD.l+58,PAD.t+11);
+
+  if(state==='edit'&&editNodes){ editNodes.forEach((n,i)=>{ ctx.fillStyle=i===dragNode?'#fff':'#1fc7d4';
+    ctx.beginPath();ctx.arc(xOf(n.t),yOf(n.d),5.5,0,7);ctx.fill();
+    ctx.strokeStyle='rgba(7,26,38,.8)';ctx.lineWidth=1.5;ctx.stroke(); }); }
+
+  if(state==='scrub'&&scrubX!=null){
+    ctx.strokeStyle='rgba(220,236,242,.5)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(scrubX,PAD.t);ctx.lineTo(scrubX,H-PAD.b);ctx.stroke();ctx.setLineDash([]);
+    if(scrubD!=null){ ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(scrubX,yOf(scrubD),5,0,7);ctx.fill(); }
+  }else if(state!=='edit'){
+    const cp=poly[poly.length-1], mx=xOf(cp.t), my=yOf(cp.d);
+    if(state==='idle'||state==='diving'){ const pr=10+2*Math.sin(performance.now()/300);
+      ctx.strokeStyle='rgba(31,199,212,.5)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(mx,my,pr,0,7);ctx.stroke();ctx.setLineDash([]); }
+    ctx.fillStyle='#eaf7fb';ctx.beginPath();ctx.arc(mx,my,6.5,0,7);ctx.fill();
+    ctx.fillStyle='#1fc7d4';ctx.beginPath();ctx.arc(mx,my,3.8,0,7);ctx.fill();
+    if(state==='idle'){ ctx.fillStyle='rgba(220,236,242,.7)';ctx.font='10px Sora, sans-serif';ctx.textAlign='left';
+      ctx.fillText('drag ↕', mx+12, my+4); }
+  }
+}
+
+/* ---- scrub + edit ---- */
+let scrubX=null, scrubStress=0, scrubLi=0, scrubLogit=0, scrubDriver='';
+function enterScrub(){
+  if(!history.length) return;
+  state='scrub'; $('scrubBtn').classList.add('on'); $('editBtn').classList.remove('on');
+  $('log').innerHTML='Drag across the chart to step through the dive. The dial and drivers follow the diver through time.';
+  scrubTo(cv.width-PAD.r);
+}
+function scrubTo(px){
+  scrubX=Math.max(PAD.l,Math.min(cv.width-PAD.r,px));
+  const t=tOfX(scrubX);
+  let s=history[0]; for(const h of history){ if(h.t<=t) s=h; else break; }
+  scrubD=s.d; scrubP=s.p;
+  const r0=stressAtTime(s.t); scrubStress=r0.st; scrubLi=r0.li;
+  /* Percentile at this instant is the same "surfaced now" projection the
+     history curve stores, so the dial and the curve cannot disagree. */
+  let mx=0; for(const q of points){ if(q.t<=s.t) mx=Math.max(mx,q.d); }
+  const r=liveRisk(Math.max(mx,s.d), Math.max(s.t,0.1), s.d);
+  scrubLogit=r.score;
+  const dr=realDrivers(r.scalars);
+  scrubDriver=dr.length?dr[0].name:'ascent time';
+}
+function stressAtTime(tt){
+  const poly=points.filter(p=>p.t<=tt+1e-6);
+  if(poly.length<2) return {st:inspN2(0)/mSurface(NC-1), li:NC-1};
+  const r=simulatePolyline(poly); return {st:r.st, li:r.li};
+}
+function buildEditNodes(){
+  const N=7; editNodes=[]; const T=points[points.length-1].t;
+  for(let i=0;i<N;i++){ const tt=T*i/(N-1);
+    let s=points[0]; for(const p of points){ if(p.t<=tt) s=p; else break; }
+    editNodes.push({t:tt, d:s.d}); }
+  editNodes[0].d=0; editNodes[N-1].d=0;
+}
+function enterEdit(){
+  if(!editNodes) buildEditNodes();
+  state='edit'; $('editBtn').classList.add('on'); $('scrubBtn').classList.remove('on'); scrubX=null;
+  $('log').innerHTML='Drag the points to reshape the dive, then press <span>Re-analyse</span>.';
+  $('editBtn').textContent='Re-analyse';
+}
+function rerunEdit(){
+  const poly=editNodes.map(n=>({t:n.t,d:n.d}));
+  const sim=simulateHistory(poly);
+  tissue=sim.tissue; depth=0; maxDepth=Math.max.apply(null,poly.map(p=>p.d)); diveTime=poly[poly.length-1].t;
+  points=poly.slice(); history=sim.history;
+  state='done'; $('editBtn').classList.remove('on'); $('editBtn').textContent='Edit & re-analyse';
+  showAssessment(sim.st, sim.li);
+}
+
+/* ---- assessment ---- */
+function hideAssessment(){ $('assess').classList.remove('show'); $('assessPlaceholder').style.display='block'; lastAssess=null; }
+function ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+/* The two reckless/careful reference dives used to expose the model's inversion. */
+const CARE_PROFILE=[{t:0,d:0},{t:1.5,d:18},{t:40,d:18},{t:43,d:5},{t:46,d:5},{t:47,d:0}];
+const RECK_PROFILE=[{t:0,d:0},{t:2.2,d:40},{t:10,d:40},{t:11.3,d:0}];
+
+function showAssessment(stress, li){
+  $('assessPlaceholder').style.display='none';
+  $('assess').classList.add('show');
+
+  const r=predict(points);
+  if(!r){ return; }
+  const pctN=Math.round(r.pct*100);
+
+  /* ---- HEADLINE: the model's real prediction ---- */
+  let col,band;
+  if(r.pct<0.34){col='var(--safe)';band='MILDER THAN MOST NAVY DIVES';}
+  else if(r.pct<0.67){col='var(--amber)';band='MID-RANGE FOR NAVY DIVES';}
+  else {col='var(--risk)';band='HARSHER THAN MOST NAVY DIVES';}
+  $('aBig').textContent=ord(pctN); $('aBig').style.color=col;
+  const bd=$('aBand'); bd.textContent=band; bd.style.background='rgba(255,255,255,.06)'; bd.style.color=col; bd.style.marginBottom='0';
+
+  const obs=(r.cohortRate*100).toFixed(1);
+  $('aInterp').innerHTML=
+    'Your dive: <b>'+Math.round(r.depthFsw/M_TO_FSW)+' m</b> for <b>'+r.bottom.toFixed(0)+' min</b>. '+
+    'Bühlmann ZHL-16C says that earns a decompression obligation of <b>'+r.requiredAscent.toFixed(1)+' minutes</b>'+
+    (r.requiredStops>0.4 ? ' (including <b>'+r.requiredStops.toFixed(1)+' min</b> of mandatory stops)' : ' of travel, with no mandatory stops')+'.'+
+    '<br><br>The model — fitted to <b>'+RM.n.toLocaleString()+' real Navy dives</b>, '+RM.nDcs+' of which ended in decompression sickness — '+
+    'ranks that exposure at the <b>'+ord(pctN)+' percentile</b> of the dives it was trained on. '+
+    'Real dives in this band had an observed DCS rate of <b>'+obs+'%</b> — a fact about <i>Navy trials built to provoke DCS</i>, not a probability for you.'+
+    '<br><br><b>Why this is a real prediction and not a toy.</b> The model scores the <i>obligation the physics demands</i>, not an ascent time you picked. '+
+    'That is exactly how the training data was generated — Navy divers followed a prescribed schedule. So the number is monotonic: go deeper or stay longer and it rises, always. '+
+    'There is no fast-ascent trick that talks it down.'+
+    '<br><br>Its honest skill is <b>AUC '+RM.auc.toFixed(2)+' ± '+RM.aucSd.toFixed(2)+'</b> — shown one diver who got bent and one who didn\'t, it picks correctly '+
+    Math.round(RM.auc*100)+'% of the time. A coin flip is 50%. <b>This is weak.</b> Rank dives with it; never trust it with a life.';
+
+  /* ---- Did the diver honour the obligation? The one thing the model CANNOT score. ---- */
+  let out='';
+  if(r.violated){
+    out+='<div class="finding">'+
+      '<div class="fhead">⚠ You surfaced '+r.deficit.toFixed(1)+' minutes early on your obligation</div>'+
+      '<p>The physics demanded <b>'+r.requiredAscent.toFixed(1)+' min</b> of ascent. You took <b>'+r.actualAscent.toFixed(1)+' min</b>. '+
+      'Bühlmann puts your peak tissue loading at <b>'+stress.toFixed(2)+'×</b> the surfacing limit'+
+      (stress>=1.0 ? ' — <b>above 1.0×, which means a compartment is carrying more nitrogen than the table permits at the surface.</b>' : '.')+
+      ' The leading compartment is the <b>'+HALF[li]+'-minute</b> one.</p>'+
+      '<p class="fbad"><b>The model cannot score this dive, and the rank above is not to be trusted for it.</b> '+
+      'Every diver in the 1,948-dive training set followed their prescribed schedule. A dive that skips the obligation is one the model '+
+      'has <i>never seen</i>. Asking it is pure extrapolation — and because its ascent-time coefficient is positive, it would happily call your '+
+      'short ascent <i>safer</i>. It is wrong. That is the trap, and this is the tool refusing to fall into it.</p>'+
+      '<p class="fmeta">This is the honest boundary of a data-driven model: it can only answer questions its data actually contains. '+
+      'Skipping deco is not one of them. For that, listen to the physics — you are over your ceiling.</p>'+
+      '</div>';
+  }else{
+    out+='<div class="okbox">'+
+      '<div class="okhead">✓ Obligation honoured</div>'+
+      '<p>You took <b>'+r.actualAscent.toFixed(1)+' min</b> to surface against a required <b>'+r.requiredAscent.toFixed(1)+' min</b>. '+
+      'Peak Bühlmann loading <b>'+stress.toFixed(2)+'×</b> the surfacing limit, led by the <b>'+HALF[li]+'-minute</b> compartment. '+
+      'Because you followed the schedule, this dive looks like the ones the model was trained on — so the rank above is a prediction it is actually entitled to make.</p>'+
+      '</div>';
+  }
+
+  /* ---- what moved it ---- */
+  out+='<b>What moved the ranking (standardised log-odds):</b><br>'+
+    r.drivers.filter(d=>Math.abs(d.z)>0.001).map(d=>
+      (d.z>=0?'▲ ':'▼ ')+(d.name==='ascent time'?'deco obligation':d.name)+': <b>'+(d.z>=0?'+':'−')+Math.abs(d.z).toFixed(3)+'</b>').join('<br>')+
+    '<br><span style="color:var(--muted)">The obligation dominates (coefficient +0.54) — it is the model\'s summary of how provocative the dive was. '+
+    'Max depth on its own barely registers (+0.007), which is not what most divers expect.</span>'+
+    (r.multilevel ? '<br><br><span style="color:var(--amber)"><b>⚠ Multi-level profile.</b> The model sees only three numbers, so it is throwing your profile\'s shape away. Treat this rank as rough.</span>' : '');
+
+  $('aDrivers').innerHTML=out;
+  lastAssess={p:r.pct,stress:stress,li:li};
+}
+
+/* ---- overlays ---- */
+let lastFocused=null, activeOverlay=null;
+function focusables(el){ return Array.prototype.slice.call(el.querySelectorAll('button,[href],input,[tabindex]:not([tabindex="-1"])')).filter(n=>n.offsetParent!==null); }
+function openOverlay(el){ lastFocused=document.activeElement; activeOverlay=el; el.classList.add('show'); const f=focusables(el); if(f.length) f[0].focus(); }
+function closeOverlay(el){ el.classList.remove('show'); if(activeOverlay===el) activeOverlay=null; if(lastFocused&&lastFocused.focus){ try{lastFocused.focus();}catch(e){} } }
+document.addEventListener('keydown',e=>{
+  if(!activeOverlay) return;
+  if(e.key==='Escape'){ e.preventDefault(); closeOverlay(activeOverlay); }
+  else if(e.key==='Tab'){ const f=focusables(activeOverlay); if(!f.length) return;
+    const first=f[0], last=f[f.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); } }
+});
+
+/* ---- input ---- */
+function press(dir,on){
+  if(mode!=='fly') return;
+  if(dir==='down'){
+    if(on && state==='idle') startDive();
+    if(state==='done'||state==='scrub'||state==='edit') return;
+    keys.down=on; setActive('descBtn',on);
+  }else{ if(state!=='diving') return; keys.up=on; setActive('ascBtn',on); }
+}
+function bindHold(el,dir){
+  const d=e=>{e.preventDefault();press(dir,true);};
+  const u=e=>{e.preventDefault();press(dir,false);};
+  el.addEventListener('pointerdown',d); el.addEventListener('pointerup',u);
+  el.addEventListener('pointerleave',u); el.addEventListener('pointercancel',u);
+  el.addEventListener('keydown',e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();press(dir,true);} });
+  el.addEventListener('keyup',e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();press(dir,false);} });
+}
+bindHold($('descBtn'),'down'); bindHold($('ascBtn'),'up');
+
+const gameArea=$('gamearea');
+gameArea.addEventListener('pointerenter',()=>gameHot=true);
+gameArea.addEventListener('pointerleave',()=>gameHot=false);
+gameArea.addEventListener('focusin',()=>gameFocused=true);
+gameArea.addEventListener('focusout',()=>gameFocused=false);
+function engaged(){ return state==='diving' || gameHot || gameFocused; }
+window.addEventListener('keydown',e=>{
+  if(activeOverlay) return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'||e.key===' '){
+    if(!engaged()) return;
+    if(e.key===' '){ if(state==='diving'){ e.preventDefault(); togglePause(); } return; }
+    e.preventDefault();
+    if(e.key==='ArrowDown') press('down',true); else press('up',true);
+  }
+});
+window.addEventListener('keyup',e=>{ if(e.key==='ArrowDown') press('down',false); else if(e.key==='ArrowUp') press('up',false); });
+window.addEventListener('blur',()=>{press('down',false);press('up',false);});
+
+function canvasPos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)*(cv.width/r.width), y:(e.clientY-r.top)*(cv.height/r.height)}; }
+cv.addEventListener('pointerdown',e=>{
+  e.preventDefault(); const pos=canvasPos(e); cv.setPointerCapture(e.pointerId);
+  if(state==='scrub'){ dragMode='scrub'; scrubTo(pos.x); return; }
+  if(state==='edit'&&editNodes){ let bi=-1,bd=1e9;
+    editNodes.forEach((n,i)=>{ const dd=Math.hypot(pos.x-xOf(n.t),pos.y-yOf(n.d)); if(dd<bd){bd=dd;bi=i;} });
+    if(bd<18 && bi>0 && bi<editNodes.length-1){ dragMode='node'; dragNode=bi; } return; }
+  if(mode==='fly'){
+    if(state==='idle') startDive();
+    if(state==='diving'){ dragMode='diver'; cv.classList.add('grabbing'); dragTargetDepth=dOfY(pos.y); }
+  }
+});
+cv.addEventListener('pointermove',e=>{
+  if(!dragMode) return; const pos=canvasPos(e);
+  if(dragMode==='diver'){ dragTargetDepth=dOfY(pos.y); }
+  else if(dragMode==='scrub'){ scrubTo(pos.x); }
+  else if(dragMode==='node' && dragNode>0){ editNodes[dragNode].d=dOfY(pos.y); }
+});
+function endCanvasDrag(){ if(dragMode==='diver') cv.classList.remove('grabbing'); dragMode=null; dragNode=-1; }
+cv.addEventListener('pointerup',endCanvasDrag);
+cv.addEventListener('pointercancel',endCanvasDrag);
+
+/* ---- input mode + manual leg builder ---- */
+function switchMode(m){
+  if(mode===m) return;
+  mode=m;
+  $('modeswitch').classList.toggle('manual', m==='manual');
+  $('modeFly').classList.toggle('on', m==='fly'); $('modeFly').setAttribute('aria-selected', m==='fly'?'true':'false');
+  $('modeManual').classList.toggle('on', m==='manual'); $('modeManual').setAttribute('aria-selected', m==='manual'?'true':'false');
+  $('flyPanel').hidden = m!=='fly';
+  $('manualPanel').hidden = m!=='manual';
+  $('descBtn').classList.remove('nudge'); hinted=true;
+  resetGame(false);
+  if(m==='manual'){ renderManual(); updateStepUI(); analyseManual(); }
+}
+$('modeFly').onclick=()=>switchMode('fly');
+$('modeManual').onclick=()=>switchMode('manual');
+
+function clampNum(x,lo,hi){ x=Math.round(+x||0); return Math.max(lo,Math.min(hi,x)); }
+function manualDepth(){ return manualSegs.length ? manualSegs[manualSegs.length-1].asc : 0; }
+function mflash(msg){ $('log').innerHTML='<span style="color:var(--amber)">'+msg+'</span>'; }
+function updateStepUI(){
+  const cur=manualDepth(), n=manualSegs.length;
+  $('mStepNum').textContent=n+1;
+  $('mStepFrom').textContent = n===0 ? 'from the surface' : 'continuing from '+cur+' m';
+  if(n===0){ $('mDescV').value=30; $('mHoldV').value=15; $('mAscV').value=5; }
+  else { $('mDescV').value=cur; $('mHoldV').value=3; $('mAscV').value=0; }
+}
+function confirmLeg(){
+  const cur=manualDepth();
+  const desc=clampNum($('mDescV').value,0,45), hold=clampNum($('mHoldV').value,0,90), asc=clampNum($('mAscV').value,0,45);
+  if(desc<cur){ mflash('“Descend to” must be at least your current depth ('+cur+' m).'); return; }
+  if(asc>desc){ mflash('“Rise to” must be shallower than the leg depth ('+desc+' m).'); return; }
+  if(desc===cur && hold===0 && asc===cur){ mflash('That leg does nothing — set a depth, a stop, or a rise.'); return; }
+  manualSegs.push({desc:desc,hold:hold,asc:asc});
+  renderManual(); analyseManual(); updateStepUI();
+}
+function renderManual(){
+  const box=$('manualRows');
+  if(!manualSegs.length){ box.innerHTML='<span style="opacity:.7">No legs yet — set the first one above and confirm.</span>'; return; }
+  box.innerHTML=manualSegs.map((s,i)=>'<span class="mchip">Leg '+(i+1)+': ↓ '+s.desc+' m · ■ '+s.hold+' min · ↑ '+s.asc+' m</span>').join('');
+}
+function buildManualPolyline(){
+  const rate=depthRate(); let pts=[{t:0,d:0}], t=0, d=0;
+  for(const s of manualSegs){
+    if(s.desc>d){ t+=(s.desc-d)/rate; d=s.desc; pts.push({t:t,d:d}); }
+    if(s.hold>0){ t+=s.hold; pts.push({t:t,d:d}); }
+    if(s.asc<d){ t+=(d-s.asc)/rate; d=s.asc; pts.push({t:t,d:d}); }
+  }
+  return pts;
+}
+function analyseManual(){
+  const poly=buildManualPolyline();
+  if(poly.length<2){ resetGame(true); setStatus('ready','var(--muted)');
+    $('log').innerHTML='Plan the dive one leg at a time — set a leg above and confirm.'; return; }
+  loadProfile(poly);
+  const surfaced = manualDepth()<=0;
+  setStatus('analysed','var(--muted)');
+  $('log').innerHTML = manualSegs.length+' leg'+(manualSegs.length>1?'s':'')+' analysed'+
+    (surfaced?'.':' — <span>ends at '+manualDepth()+' m</span>; add a final leg rising to 0 m to surface.');
+}
+$('mConfirm').onclick=confirmLeg;
+$('mUndo').onclick=()=>{ manualSegs.pop(); renderManual(); analyseManual(); updateStepUI(); };
+$('mClear').onclick=()=>{ manualSegs=[]; renderManual(); updateStepUI(); resetGame(false); };
+
+/* ---- buttons ---- */
+$('resetBtn').onclick=()=>{ if(mode==='manual'){ manualSegs=[]; renderManual(); updateStepUI(); } resetGame(false); };
+$('scrubBtn').onclick=()=>{ if(state==='scrub'){ state='done'; $('scrubBtn').classList.remove('on'); scrubX=null; scrubP=scrubD=null; } else enterScrub(); };
+$('editBtn').onclick=()=>{ if(state==='edit') rerunEdit(); else enterEdit(); };
+/* The physiology controls are inert BY CONSTRUCTION -- the real dive records
+   contain no such columns, so nothing can be fitted to them. Toggling one must
+   visibly do nothing, and the app must say why, or it just looks broken. */
+function inertNote(what){
+  $('log').innerHTML='<b>'+what+' changed nothing.</b> The dial did not move, and it never will. '+
+    'The 1,948 real Navy dives record only depth, bottom time, ascent time and outcome — '+
+    'there is no '+what.toLowerCase()+' column to fit. Anything this app told you about '+
+    'physiology would be invented. That silence is the honest answer.';
+}
+function toggleTog(t){ t.classList.toggle('on'); flags[t.dataset.f]=t.classList.contains('on')?1:0;
+  inertNote(t.textContent.trim()); }
+document.querySelectorAll('.tog').forEach(t=>{ t.onclick=()=>toggleTog(t);
+  t.addEventListener('keydown',e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();toggleTog(t);} }); });
+$('age').oninput=()=>{ $('ageV').textContent=$('age').value; inertNote('Age'); };
+$('rate').oninput=()=>{$('rateV').textContent=$('rate').value;};
+$('helpBtn').onclick=()=>openOverlay($('howto'));
+$('howClose').onclick=()=>closeOverlay($('howto'));
+$('howto').onclick=e=>{ if(e.target===$('howto')) closeOverlay($('howto')); };
+
+setTimeout(()=>{ if(!hinted && state==='idle' && mode==='fly') $('descBtn').classList.add('nudge'); },1400);
+
+(function buildTicks(){
+  const g=$('ticks'); const cx=105,cy=105;
+  for(let i=0;i<12;i++){ const a=(i*30)*Math.PI/180, major=(i%3===0);
+    const r1=major?95:98, r2=101;
+    const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+    ln.setAttribute('x1',cx+r1*Math.cos(a)); ln.setAttribute('y1',cy+r1*Math.sin(a));
+    ln.setAttribute('x2',cx+r2*Math.cos(a)); ln.setAttribute('y2',cy+r2*Math.sin(a));
+    ln.setAttribute('stroke-width',major?2.4:1.2); g.appendChild(ln); }
+})();
+
+/* ---- tabs + overview video ---- */
+let pitchLoaded=false;
+function loadPitch(){
+  if(pitchLoaded) return; const tpl=$('pitchDoc'), fr=$('pitchFrame'); if(!tpl||!fr) return;
+  fr.srcdoc=tpl.textContent.replace(/<\\\/script>/g,'<\/script>'); pitchLoaded=true;
+}
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(b=>{ const on=b.dataset.tab===name;
+    b.classList.toggle('on',on); b.setAttribute('aria-selected',on?'true':'false'); });
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='p-'+name));
+  if(name==='overview') loadPitch();
+  if(name==='learn') requestAnimationFrame(()=>{ initDiver(); if(diverAPI) diverAPI.resize(); });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+/* ---- 3D diver (Three.js, lazy-init when the How-it-works tab opens) ---- */
+let diverInited=false, diverAPI=null;
+function initDiver(){
+  if(diverInited) return;
+  const host=$('diver3d'); if(!host) return;
+  const W=host.clientWidth, H=host.clientHeight; if(!W||!H) return;
+  if(!window.THREE){ const fb0=$('diverFallback'); if(fb0) fb0.textContent='3D library unavailable — the diver needs an internet connection to load. The explanation still works without it.'; return; }
+  diverInited=true;
+  const T=window.THREE;
+  const scene=new T.Scene(); scene.fog=new T.FogExp2(0x061620,0.05);
+  const camera=new T.PerspectiveCamera(38,W/H,0.1,100); camera.position.set(0,0.8,7.6); camera.lookAt(0,-0.15,0);
+  const renderer=new T.WebGLRenderer({alpha:true,antialias:true});
+  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1)); renderer.setSize(W,H);
+  if('outputEncoding' in renderer && T.sRGBEncoding) renderer.outputEncoding=T.sRGBEncoding;
+  host.appendChild(renderer.domElement);
+  const fb=$('diverFallback'); if(fb) fb.style.display='none';
+
+  scene.add(new T.HemisphereLight(0x5fb9d6,0x02101a,0.75));
+  const keyL=new T.DirectionalLight(0xeaf6ff,0.85); keyL.position.set(3,6,5); scene.add(keyL);
+  const rimL=new T.DirectionalLight(0x1fc7d4,0.7); rimL.position.set(-5,-1,-4); scene.add(rimL);
+
+  const neo=new T.MeshStandardMaterial({color:0x122736,roughness:.72,metalness:.08});
+  const neoDk=new T.MeshStandardMaterial({color:0x0a1a26,roughness:.8,metalness:.06});
+  const metal=new T.MeshStandardMaterial({color:0x8fa0ad,roughness:.38,metalness:.85});
+  const rubber=new T.MeshStandardMaterial({color:0x0b141c,roughness:.9,metalness:.04});
+  const glassM=new T.MeshStandardMaterial({color:0x274a5a,roughness:.15,metalness:.2,transparent:true,opacity:.6,emissive:0x0c2530,emissiveIntensity:.35});
+  const skin=new T.MeshStandardMaterial({color:0xbf9782,roughness:.65,metalness:0});
+
+  const S=32;
+  const diver=new T.Group();
+  const torso=new T.Mesh(new T.CylinderGeometry(0.44,0.38,1.45,S), neo); torso.rotation.x=Math.PI/2; torso.position.z=-0.05; diver.add(torso);
+  const shoulder=new T.Mesh(new T.SphereGeometry(0.44,S,24), neo); shoulder.position.z=0.6; shoulder.scale.set(1,0.85,0.85); diver.add(shoulder);
+  const hips=new T.Mesh(new T.SphereGeometry(0.4,S,24), neo); hips.position.z=-0.78; hips.scale.set(1,0.85,1.05); diver.add(hips);
+  const belt=new T.Mesh(new T.TorusGeometry(0.4,0.05,14,S), rubber); belt.position.z=-0.58; belt.rotation.y=Math.PI/2; diver.add(belt);
+  const neck=new T.Mesh(new T.CylinderGeometry(0.19,0.23,0.22,S), neoDk); neck.rotation.x=Math.PI/2; neck.position.z=0.78; diver.add(neck);
+  const hood=new T.Mesh(new T.SphereGeometry(0.38,S,28), neoDk); hood.position.z=1.02; diver.add(hood);
+  const face=new T.Mesh(new T.SphereGeometry(0.31,S,24), skin); face.position.set(0,-0.03,1.1); face.scale.set(0.92,0.96,0.9); diver.add(face);
+  const maskFrame=new T.Mesh(new T.TorusGeometry(0.23,0.045,14,S), rubber); maskFrame.position.set(0,0,1.27); maskFrame.scale.set(1,0.78,1); diver.add(maskFrame);
+  const lens=new T.Mesh(new T.SphereGeometry(0.23,S,20), glassM); lens.position.set(0,0,1.25); lens.scale.set(1,0.72,0.5); diver.add(lens);
+  const strap=new T.Mesh(new T.TorusGeometry(0.36,0.025,12,S), rubber); strap.position.z=1.0; strap.rotation.y=Math.PI/2; diver.add(strap);
+  const reg=new T.Mesh(new T.SphereGeometry(0.1,20,16), rubber); reg.position.set(0,-0.2,1.12); reg.scale.set(1.2,1,1); diver.add(reg);
+  const tank=new T.Mesh(new T.CylinderGeometry(0.21,0.21,1.1,S), metal); tank.rotation.x=Math.PI/2; tank.position.set(0,0.4,-0.05); diver.add(tank);
+  const tankCap=new T.Mesh(new T.SphereGeometry(0.21,S,18), metal); tankCap.position.set(0,0.4,0.48); diver.add(tankCap);
+  const valve=new T.Mesh(new T.CylinderGeometry(0.045,0.045,0.16,16), metal); valve.position.set(0,0.58,0.48); diver.add(valve);
+  const hoseA=new T.CatmullRomCurve3([ new T.Vector3(0,0.56,0.48), new T.Vector3(0.26,0.48,0.68), new T.Vector3(0.22,0,0.98), new T.Vector3(0.03,-0.18,1.1) ]);
+  diver.add(new T.Mesh(new T.TubeGeometry(hoseA,40,0.03,10,false), rubber));
+  const hoseB=new T.CatmullRomCurve3([ new T.Vector3(0,0.56,0.42), new T.Vector3(-0.33,0.28,0.18), new T.Vector3(-0.42,-0.12,-0.1) ]);
+  diver.add(new T.Mesh(new T.TubeGeometry(hoseB,28,0.026,10,false), rubber));
+  const gauge=new T.Mesh(new T.CylinderGeometry(0.075,0.075,0.035,20), metal); gauge.position.set(-0.42,-0.12,-0.12); gauge.rotation.x=Math.PI/2; diver.add(gauge);
+
+  function arm(side){ const g=new T.Group();
+    const up=new T.Mesh(new T.CylinderGeometry(0.115,0.095,0.58,S), neo); up.rotation.x=Math.PI/2; up.position.z=0.29; g.add(up);
+    const elbow=new T.Mesh(new T.SphereGeometry(0.1,20,16), neo); elbow.position.z=0.58; g.add(elbow);
+    const fo=new T.Mesh(new T.CylinderGeometry(0.095,0.08,0.55,S), neo); fo.rotation.x=Math.PI/2; fo.position.z=0.85; g.add(fo);
+    const gl=new T.Mesh(new T.SphereGeometry(0.1,20,16), neoDk); gl.position.z=1.15; gl.scale.set(0.9,0.8,1.15); g.add(gl);
+    g.position.set(side*0.34,-0.05,0.62); g.rotation.y=-side*0.16; g.rotation.x=0.14; return g; }
+  const armL=arm(-1), armR=arm(1); diver.add(armL); diver.add(armR);
+
+  const finShape=new T.Shape();
+  finShape.moveTo(0,0);
+  finShape.bezierCurveTo(0.19,0.06, 0.24,0.55, 0.15,1.0);
+  finShape.bezierCurveTo(0.08,1.06,-0.08,1.06,-0.15,1.0);
+  finShape.bezierCurveTo(-0.24,0.55,-0.19,0.06,0,0);
+  const finGeo=new T.ExtrudeGeometry(finShape,{depth:0.03,bevelEnabled:true,bevelThickness:0.015,bevelSize:0.02,bevelSegments:2,steps:1});
+  finGeo.center();
+
+  function leg(side){ const g=new T.Group();
+    const th=new T.Mesh(new T.CylinderGeometry(0.155,0.12,0.66,S), neo); th.rotation.x=Math.PI/2; th.position.z=-0.34; g.add(th);
+    const knee=new T.Mesh(new T.SphereGeometry(0.12,20,16), neo); knee.position.z=-0.68; g.add(knee);
+    const sh=new T.Mesh(new T.CylinderGeometry(0.115,0.085,0.66,S), neo); sh.rotation.x=Math.PI/2; sh.position.z=-1.02; g.add(sh);
+    const ankle=new T.Mesh(new T.SphereGeometry(0.09,18,14), neoDk); ankle.position.z=-1.34; g.add(ankle);
+    const fin=new T.Group(); fin.position.z=-1.34;
+    const foot=new T.Mesh(new T.SphereGeometry(0.12,20,16), rubber); foot.scale.set(1.05,0.8,1.5); foot.position.z=-0.12; fin.add(foot);
+    const blade=new T.Mesh(finGeo, rubber); blade.rotation.x=-Math.PI/2; blade.position.z=-0.75; blade.scale.set(1.15,1,0.95); fin.add(blade);
+    g.add(fin); g.position.set(side*0.19,-0.04,-0.92); g.userData.fin=fin; return g; }
+  const legL=leg(-1), legR=leg(1); diver.add(legL); diver.add(legR);
+
+  diver.scale.set(0.84,0.84,0.84); diver.rotation.x=-0.16; scene.add(diver);
+
+  const bmat=new T.MeshStandardMaterial({color:0xbfe6f2,transparent:true,opacity:.42,roughness:.2});
+  function resetBub(b,init){ b.position.set(0.04+(Math.random()-0.5)*0.45, (init? Math.random()*3-0.5 : -0.15), 1.0+(Math.random()-0.5)*0.35); b.userData.sp=0.45+Math.random()*0.7; b.userData.wob=Math.random()*6.28; }
+  const bubbles3=[];
+  for(let i=0;i<16;i++){ const b=new T.Mesh(new T.SphereGeometry(0.028+Math.random()*0.045,12,12), bmat); resetBub(b,true); scene.add(b); bubbles3.push(b); }
+
+  let ry=0.55, rx=0, autoRot=true, dragging=false, px=0, py=0, resume=null;
+  host.style.cursor='grab';
+  host.addEventListener('pointerdown',e=>{ dragging=true; autoRot=false; px=e.clientX; py=e.clientY; host.style.cursor='grabbing'; if(resume)clearTimeout(resume); });
+  window.addEventListener('pointerup',()=>{ if(dragging){ dragging=false; host.style.cursor='grab'; resume=setTimeout(()=>{autoRot=true;},2500);} });
+  window.addEventListener('pointermove',e=>{ if(!dragging)return; ry+=(e.clientX-px)*0.01; rx+=(e.clientY-py)*0.008; rx=Math.max(-0.5,Math.min(0.5,rx)); px=e.clientX; py=e.clientY; });
+
+  const clock=new T.Clock();
+  function loop(){ requestAnimationFrame(loop); const dt=Math.min(0.05,clock.getDelta()), tt=clock.elapsedTime;
+    if(autoRot) ry+=0.18*dt;
+    diver.rotation.y=ry; diver.rotation.x=-0.16+rx;
+    diver.position.y=Math.sin(tt*0.6)*0.05;
+    legL.rotation.x=Math.sin(tt*1.8)*0.16; legR.rotation.x=Math.sin(tt*1.8+Math.PI)*0.16;
+    legL.userData.fin.rotation.x=Math.sin(tt*1.8-0.6)*0.22; legR.userData.fin.rotation.x=Math.sin(tt*1.8+Math.PI-0.6)*0.22;
+    bubbles3.forEach(b=>{ b.position.y+=b.userData.sp*dt; b.position.x+=Math.sin(tt*2+b.userData.wob)*0.0018; if(b.position.y>2.6) resetBub(b,false); });
+    renderer.render(scene,camera);
+  }
+  loop();
+  diverAPI={ resize:function(){ const w=host.clientWidth,h=host.clientHeight; if(!w||!h)return; camera.aspect=w/h; camera.updateProjectionMatrix(); renderer.setSize(w,h);} };
+  window.addEventListener('resize',diverAPI.resize);
+}
+
+/* ---- init ---- */
+buildPresets(); buildComps(); buildRuler(); renderManual(); updateStepUI(); loadPitch();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
