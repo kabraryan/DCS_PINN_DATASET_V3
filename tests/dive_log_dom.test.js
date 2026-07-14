@@ -86,6 +86,56 @@ setTimeout(() => {
   ok('importing garbage throws a clean error', threw);
   ok('  ...and leaves the existing log intact', w6.logLoad().length === 1);
 
+  // A crafted file with a NaN depth must be rejected, not coerced — NaN makes the
+  // void guards fail open, so a dangerous dive could import as unflagged.
+  const w7 = boot();
+  const bad = JSON.stringify([{id: 'x', name: 'nan', savedAt: 1,
+    poly: [{t: 0, d: 0}, {t: 5, d: 'deep'}, {t: 10, d: 0}]}]);
+  const rb = w7.logImport(bad);
+  ok('import rejects non-finite waypoints', rb.added === 0 && rb.skipped === 1, JSON.stringify(rb));
+
+  // A bent / out-of-distribution dive: over the ceiling, unrankable by the model.
+  const BENT = [{t:0,d:0},{t:3,d:45},{t:10,d:45},{t:11,d:33},{t:12,d:38},{t:13,d:30},
+                {t:15,d:32},{t:17,d:22},{t:18,d:26},{t:20,d:12},{t:21,d:18},{t:23.6,d:0}];
+
+  console.log('--- render: table ---');
+  const w2 = boot();
+  w2.logAdd('safe dive', SQUARE);
+  w2.logAdd('bent dive', BENT);
+  w2.renderLog();
+  const rows = [...w2.document.querySelectorAll('#logTbody tr')];
+  ok('table renders one row per scenario', rows.length === 2, rows.length);
+
+  const cells = r => [...r.children].map(c => c.textContent.trim());
+  const bent = rows.find(r => cells(r)[0] === 'bent dive');
+  const safe = rows.find(r => cells(r)[0] === 'safe dive');
+  ok('bent dive flagged (void row class)', bent.classList.contains('void'));
+  ok('safe dive NOT flagged', !safe.classList.contains('void'));
+
+  console.log('--- the honesty rule in the table ---');
+  const bentRank = cells(bent)[5];
+  const safeRank = cells(safe)[5];
+  ok('bent/unrankable dive shows VOID', bentRank === 'VOID', bentRank);
+  ok('voided rank contains NO digits', !/\d/.test(bentRank), bentRank);
+  ok('safe dive DOES show a numeric rank', /\d/.test(safeRank), safeRank);
+
+  w2.sortLog('rank');
+  const order = [...w2.document.querySelectorAll('#logTbody tr')].map(r => r.classList.contains('void'));
+  const firstVoid = order.indexOf(true);
+  ok('sorting by rank groups voided dives at the end',
+     firstVoid === -1 || order.slice(firstVoid).every(v => v === true), JSON.stringify(order));
+
+  console.log('--- drivers ---');
+  const drv = w2.document.getElementById('logDrivers').textContent;
+  ok('driver breakdown mentions the obligation', /obligation/i.test(drv));
+  ok('voided dive gets a refusal, not contributions', /no rank|does not reduce|over your ceiling|outside that world/i.test(drv));
+
+  console.log('--- empty state ---');
+  const w3 = boot();
+  w3.renderLog();
+  ok('empty log shows the empty state', !w3.document.getElementById('logEmpty').hidden);
+  ok('empty log hides the table block', w3.document.getElementById('logHas').hidden);
+
   console.log(fails ? '\nFAILURES: ' + fails : '\nALL PASSED');
   process.exit(fails ? 1 : 0);
-}, 700);
+}, 900);

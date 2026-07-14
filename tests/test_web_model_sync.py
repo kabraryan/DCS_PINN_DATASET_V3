@@ -228,6 +228,58 @@ def test_violation_is_a_continuous_ceiling_audit_not_a_minutes_of_ascent_deficit
     )
 
 
+def test_dive_log_withholds_the_rank_for_a_voided_dive():
+    """The log table is a sortable grid — exactly where a tidy number on a bent
+    dive would read as comparable to the honest ones, undoing the void one screen
+    over. logRows must yield rank=null unless the model is entitled to speak, the
+    table must render VOID, and sorting must group voided dives as a block.
+    """
+    text = _html()
+    m = re.search(r"function logRows\(\)\s*\{(.*?)\n\}", text, re.S)
+    assert m, "logRows not found"
+    body = m.group(1)
+    assert re.search(r"rank:\s*r\.trustRank\s*\?\s*r\.pct\s*:\s*null", body), (
+        "logRows must yield rank=null unless predict().trustRank — the same "
+        "verdict the dial and headline use, so a bent OR out-of-distribution dive "
+        "cannot show a percentile in the table"
+    )
+    assert "VOID" in text, "the table must render the literal VOID for a withheld rank"
+    m2 = re.search(r"if\(logSortKey==='rank'\)\{(.*?)\n\s{2}\}", text, re.S)
+    assert m2, "rank-sort branch not found"
+    assert "concat" in m2.group(1), (
+        "sorting by rank must append the voided block, never interleave it among "
+        "ranked dives as though the rank were comparable"
+    )
+
+
+def test_dive_log_import_rejects_non_finite_waypoints():
+    """A crafted/corrupt log file must not smuggle in a dangerous dive that reads
+    as safe. NaN coerced from a bad depth makes the void guards (>=1.0, >tol) fail
+    OPEN, so a bent dive could import as unflagged. logImport must reject
+    non-finite waypoint numbers rather than coerce them.
+    """
+    text = _html()
+    m = re.search(r"function logImport\([^)]*\)\s*\{(.*?)\n\}", text, re.S)
+    assert m, "logImport not found"
+    body = m.group(1)
+    assert "isFinite" in body or "Number.isFinite" in body, (
+        "logImport must check waypoint numbers are finite; NaN from a bad import "
+        "makes the ceiling/load void guards fail open"
+    )
+
+
+def test_dive_log_del_id_is_escaped():
+    """Imported scenario ids are interpolated into a data-del attribute. Without
+    escaping, a crafted id breaks out of the attribute — attribute XSS from a
+    shared log file. The id must go through the escaper.
+    """
+    text = _html()
+    assert re.search(r'data-del="\'\+logEscape\(x\.s\.id\)', text) \
+        or re.search(r'data-del="\'\+\s*logEscape\(\s*x\.s\.id', text), (
+        "the data-del attribute must interpolate logEscape(x.s.id), not the raw id"
+    )
+
+
 def test_ascent_coefficient_is_positive_so_the_obligation_guard_must_exist():
     """The safety-critical invariant.
 

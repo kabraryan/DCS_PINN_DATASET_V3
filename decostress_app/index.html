@@ -250,6 +250,24 @@
     border-radius:12px;padding:12px 14px;margin-bottom:14px}
   .okbox .okhead{font-size:12px;font-weight:700;color:var(--safe);letter-spacing:.3px;margin-bottom:6px}
   .okbox p{font-size:12px!important;color:#c8d6dc;line-height:1.6;margin:0!important;max-width:none}
+  /* Dive log */
+  .logbar{display:flex;align-items:center;gap:10px;margin:14px 0}
+  .logbar button{background:rgba(31,199,212,.1);border:1px solid var(--line);color:var(--cyan);
+    border-radius:9px;padding:7px 13px;font-size:12px;cursor:pointer}
+  .logbar button:hover{background:rgba(31,199,212,.18)}
+  .logtable th{cursor:pointer;user-select:none;white-space:nowrap}
+  .logtable th:hover{color:var(--cyan)}
+  .logtable td{white-space:nowrap;font-size:12px}
+  .logtable tr.void{background:rgba(226,87,76,.08)}
+  .logtable tr.void td{color:#f0b8b3}
+  .logtable .rankvoid{color:var(--risk);font-weight:700;letter-spacing:.5px}
+  .logtable .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px}
+  .logtable .del:hover{color:var(--risk)}
+  .logdrv{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .logdrv h4{font-size:12.5px;color:var(--cyan);margin-bottom:6px}
+  .logdrv.void{border-color:rgba(226,87,76,.4);background:rgba(226,87,76,.05)}
+  .logdrv.void h4{color:var(--risk)}
+  .logdrv p{font-size:12px!important;color:#c8d6dc;line-height:1.55;margin:0!important;max-width:none}
   /* The finding panel: the fitted model's inversion, shown rather than asserted. */
   .finding{border:1px solid rgba(226,87,76,.35);background:rgba(226,87,76,.05);
     border-radius:12px;padding:14px 16px;margin-top:4px}
@@ -333,6 +351,7 @@
   <div class="tabs" role="tablist" aria-label="Sections">
     <button class="tab on" data-tab="overview" role="tab" aria-selected="true" id="tab-overview">Overview</button>
     <button class="tab" data-tab="explorer" role="tab" aria-selected="false" id="tab-explorer">Risk explorer</button>
+    <button class="tab" data-tab="log" role="tab" aria-selected="false" id="tab-log">Dive log</button>
     <button class="tab" data-tab="learn" role="tab" aria-selected="false" id="tab-learn">How it works</button>
   </div>
 
@@ -448,6 +467,7 @@
             <div class="postbar" id="postbar">
               <button id="scrubBtn" title="Step back through the dive — drag across the chart to see depth and risk at any moment.">Scrub / replay</button>
               <button id="editBtn" title="Reshape the dive by dragging its waypoints, then re-analyse the new profile.">Edit &amp; re-analyse</button>
+              <button id="saveLogBtn" title="Save this profile to the dive log, to compare against others.">Save to log</button>
             </div>
           </div>
         </div>
@@ -571,6 +591,56 @@
     <div class="disclaimer">
       <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#i-alert"/></svg>
       <div><b>Never use this tool to make in-water or ascent decisions.</b> It does not predict decompression sickness — that is its central finding, not a caveat. The one model here that <i>is</i> fitted to real outcomes would, read as advice, tell you to skip your safety stop. Consult your dive computer, your training agency, and a physician for any actual dive planning.</div>
+    </div>
+  </div>
+  </section>
+
+  <section class="panel" id="p-log" role="tabpanel" aria-labelledby="tab-log">
+  <div class="explain">
+    <h2>Dive log</h2>
+    <p class="lede">Scenarios you built in the Risk explorer. Every number below is
+      <b>recomputed now</b>, not stored — so if the model is ever refitted, these dives
+      re-score themselves. A dive that went over its ceiling, or whose shape the model
+      can’t read, shows <b>VOID</b> here for the rank, never a number.</p>
+
+    <div class="logbar">
+      <span id="logCount" class="mono">0 scenarios</span>
+      <span style="flex:1"></span>
+      <button id="logExportBtn">Export JSON</button>
+      <button id="logImportBtn">Import JSON</button>
+      <input type="file" id="logImportFile" accept="application/json" hidden>
+    </div>
+
+    <div id="logEmpty" class="placeholder">
+      No scenarios yet. Go to <b>Risk explorer</b>, fly or load a dive, surface, then hit
+      <b>Save to log</b>.
+    </div>
+
+    <div id="logHas" hidden>
+      <div class="cmpwrap">
+        <table class="cmp logtable" id="logTable">
+          <thead><tr>
+            <th data-sort="name">Name</th>
+            <th data-sort="depth">Depth</th>
+            <th data-sort="bottom">Bottom</th>
+            <th data-sort="ascent">Ascent</th>
+            <th data-sort="req">Obligation</th>
+            <th data-sort="rank">Model rank</th>
+            <th data-sort="stress">Bühlmann</th>
+            <th>Status</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="logTbody"></tbody>
+        </table>
+      </div>
+
+      <h2>Profiles overlaid</h2>
+      <p>Same axes, so the shape of the difference is visible — a safety stop is a step, a
+         bolt for the surface is a cliff. Dives that went over the ceiling are drawn dashed and red.</p>
+      <canvas id="logChart" width="900" height="340" style="width:100%;max-width:900px"></canvas>
+
+      <h2>Why each dive scored as it did</h2>
+      <div id="logDrivers"></div>
     </div>
   </div>
   </section>
@@ -1847,6 +1917,124 @@ function logAdd(name, poly){
   return s;
 }
 function logRemove(id){ logSave(logLoad().filter(s=>s.id!==id)); }
+
+/* ---- dive log: render -------------------------------------------------------
+   Every number is derived NOW from the stored polyline; nothing is read back
+   from storage but the profile. The rank obeys the same verdict as the rest of
+   the app: a dive that went over its ceiling OR does not reduce to the three
+   scalars the model reads shows VOID, never a percentile. A sortable column is
+   exactly where a tidy number on a bent dive would read as comparable to the
+   honest ones, so it must not exist. */
+let logSortKey='savedAt', logSortDir=-1;
+
+function logEscape(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function logRows(){
+  return logLoad().map(s=>{
+    const r=predict(s.poly);
+    if(!r) return null;
+    const v=voidVerdict(r);
+    // rank is null unless the model is entitled to speak about this dive
+    return {s, r, v, rank: r.trustRank ? r.pct : null};
+  }).filter(Boolean);
+}
+function sortLog(key){
+  if(logSortKey===key) logSortDir*=-1; else { logSortKey=key; logSortDir=1; }
+  renderLog();
+}
+function logSorted(){
+  const rows=logRows();
+  const val={
+    name:x=>x.s.name.toLowerCase(), depth:x=>x.r.depthFsw, bottom:x=>x.r.bottom,
+    ascent:x=>x.r.actualAscent, req:x=>x.r.requiredAscent, stress:x=>x.r.finalLoad,
+    savedAt:x=>x.s.savedAt,
+  };
+  if(logSortKey==='rank'){
+    // Voided dives are not comparable to ranked ones. Sort the ranked block,
+    // then APPEND the voided block (by loading) -- never interleave.
+    const ranked=rows.filter(x=>x.rank!=null).sort((a,b)=>(a.rank-b.rank)*logSortDir);
+    const voided=rows.filter(x=>x.rank==null).sort((a,b)=>b.r.finalLoad-a.r.finalLoad);
+    return ranked.concat(voided);
+  }
+  const f=val[logSortKey]||val.savedAt;
+  return rows.sort((a,b)=>{ const A=f(a),B=f(b); return (A<B?-1:A>B?1:0)*logSortDir; });
+}
+function logOrd(n){ const s=['th','st','nd','rd'],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+
+function renderLog(){
+  const rows=logSorted();
+  $('logCount').textContent = rows.length+(rows.length===1?' scenario':' scenarios');
+  $('logEmpty').hidden = rows.length>0;
+  $('logHas').hidden   = rows.length===0;
+  if(!rows.length){ $('logTbody').innerHTML=''; $('logDrivers').innerHTML=''; return; }
+
+  $('logTbody').innerHTML = rows.map(x=>{
+    const r=x.r, bad=x.v.voided;
+    const status = r.violated ? '<span class="con">OVER CEILING</span>'
+                 : !r.inDistribution ? '<span class="con">UNRANKABLE</span>'
+                 : '<span class="pro">OK</span>';
+    return '<tr class="'+(bad?'void':'')+'">'+
+      '<td>'+logEscape(x.s.name)+'</td>'+
+      '<td>'+Math.round(r.depthFsw/M_TO_FSW)+' m</td>'+
+      '<td>'+r.bottom.toFixed(0)+' min</td>'+
+      '<td>'+r.actualAscent.toFixed(1)+' min</td>'+
+      '<td>'+r.requiredAscent.toFixed(1)+' min</td>'+
+      '<td>'+(x.rank==null ? '<span class="rankvoid">VOID</span>' : logOrd(Math.round(x.rank*100)))+'</td>'+
+      '<td>'+r.finalLoad.toFixed(2)+'×</td>'+
+      '<td>'+status+'</td>'+
+      '<td><button class="del" data-del="'+logEscape(x.s.id)+'" title="Remove">✕</button></td>'+
+    '</tr>';
+  }).join('');
+  $('logTbody').querySelectorAll('[data-del]').forEach(b=>
+    b.onclick=()=>{ logRemove(b.dataset.del); renderLog(); });
+
+  $('logDrivers').innerHTML = rows.map(x=>{
+    const r=x.r;
+    if(x.v.voided){
+      return '<div class="logdrv void"><h4>'+logEscape(x.s.name)+' — no rank</h4>'+
+        '<p>'+x.v.reason.charAt(0).toUpperCase()+x.v.reason.slice(1)+'. Bühlmann loading peaked at <b>'+
+        r.finalLoad.toFixed(2)+'×</b> the surfacing limit. The model was fitted on square Navy bounce dives whose divers '+
+        'stayed within their ceiling; this dive is outside that world, so no percentile is shown.</p></div>';
+    }
+    const bars=r.drivers.filter(d=>Math.abs(d.z)>0.001).map(d=>
+      (d.z>=0?'▲ ':'▼ ')+(d.name==='ascent time'?'deco obligation':d.name)+
+      ': <b>'+(d.z>=0?'+':'−')+Math.abs(d.z).toFixed(3)+'</b>').join(' &nbsp;·&nbsp; ');
+    return '<div class="logdrv"><h4>'+logEscape(x.s.name)+' — '+logOrd(Math.round(x.rank*100))+' percentile</h4>'+
+      '<p>'+bars+'<br><span style="color:var(--muted)">Standardised log-odds. The deco obligation dominates; '+
+      'max depth on its own barely registers.</span></p></div>';
+  }).join('');
+
+  drawLogChart(rows);
+}
+
+const LOG_COLOURS=['#1fc7d4','#2fbf9e','#f2a63a','#9b8cff','#5ec2f2','#d98cc4'];
+function drawLogChart(rows){
+  const cv=$('logChart'); if(!cv) return;
+  const ctx=cv.getContext('2d'); if(!ctx) return;
+  const W=cv.width,H=cv.height,PADL=44,PADR=14,PADT=16,PADB=30;
+  ctx.clearRect(0,0,W,H);
+  const maxT=Math.max(10,...rows.map(x=>x.s.poly[x.s.poly.length-1].t));
+  const maxD=Math.max(10,...rows.map(x=>Math.max(...x.s.poly.map(p=>p.d))));
+  const X=t=>PADL+(t/maxT)*(W-PADL-PADR);
+  const Y=d=>PADT+(d/maxD)*(H-PADT-PADB);
+  ctx.strokeStyle='#1c4257'; ctx.fillStyle='#6b93a5';
+  ctx.font='11px IBM Plex Mono, monospace'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){ const d=maxD*i/4;
+    ctx.beginPath(); ctx.moveTo(PADL,Y(d)); ctx.lineTo(W-PADR,Y(d)); ctx.stroke();
+    ctx.textAlign='right'; ctx.fillText(Math.round(d)+'m',PADL-6,Y(d)+4); }
+  ctx.textAlign='center'; ctx.fillText('minutes',(PADL+W-PADR)/2,H-6);
+  rows.forEach((x,i)=>{
+    const col = x.r.violated ? '#e2574c' : LOG_COLOURS[i%LOG_COLOURS.length];
+    ctx.strokeStyle=col; ctx.lineWidth=2;
+    if(x.r.violated) ctx.setLineDash([5,3]); else ctx.setLineDash([]);
+    ctx.beginPath();
+    x.s.poly.forEach((p,j)=> j?ctx.lineTo(X(p.t),Y(p.d)):ctx.moveTo(X(p.t),Y(p.d)));
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=col; ctx.textAlign='left';
+    ctx.fillText('■ '+x.s.name, PADL+8, PADT+12+i*14);
+  });
+}
+
 function logExport(){ return JSON.stringify(logLoad(), null, 2); }
 function logImport(json){
   let incoming;
@@ -1854,8 +2042,12 @@ function logImport(json){
   if(!Array.isArray(incoming)) throw new Error('expected a list of scenarios');
   const list=logLoad(), have=new Set(list.map(s=>s.id));
   let added=0, skipped=0;
+  const finiteWaypoints = poly => poly.every(p => p && Number.isFinite(+p.t) && Number.isFinite(+p.d));
   for(const s of incoming){
     if(!s || typeof s.id!=='string' || !Array.isArray(s.poly) || s.poly.length<2){ skipped++; continue; }
+    // A NaN depth would coerce silently and make the ceiling/load void guards
+    // fail OPEN -- a dangerous dive importing as unflagged. Reject it instead.
+    if(!finiteWaypoints(s.poly)){ skipped++; continue; }
     if(have.has(s.id)){ skipped++; continue; }
     list.push({id:s.id, name:String(s.name||'dive'), savedAt:+s.savedAt||Date.now(),
                poly:s.poly.map(p=>({t:+p.t, d:+p.d}))});
@@ -2529,9 +2721,46 @@ function showTab(name){
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='p-'+name));
   if(name==='overview') loadPitch();
   if(name==='learn') requestAnimationFrame(()=>{ initDiver(); if(diverAPI) diverAPI.resize(); });
+  if(name==='log') renderLog();
   window.scrollTo({top:0,behavior:'smooth'});
 }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+/* ---- dive log: handlers ---- */
+$('saveLogBtn').onclick=()=>{
+  if(!points || points.length<2 || !(state==='done'||state==='edit'||state==='scrub')){
+    $('log').innerHTML='Surface from a dive first — a scenario needs a complete profile to score.';
+    return;
+  }
+  const suggested=defaultName(points);
+  const name=(window.prompt('Name this scenario', suggested)||'').trim();
+  if(name===''){ return; }                       // cancelled
+  logAdd(name, points);
+  $('log').innerHTML='Saved <b>'+logEscape(name)+'</b> to the dive log. Open the <b>Dive log</b> tab to compare it.';
+};
+document.querySelectorAll('#logTable th[data-sort]').forEach(th=>
+  th.onclick=()=>sortLog(th.dataset.sort));
+$('logExportBtn').onclick=()=>{
+  const blob=new Blob([logExport()],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='decostress-log.json';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$('logImportBtn').onclick=()=>$('logImportFile').click();
+$('logImportFile').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const {added,skipped}=logImport(rd.result);
+      renderLog();
+      window.alert('Imported '+added+' scenario'+(added===1?'':'s')+
+                   (skipped?', skipped '+skipped+' (duplicate or malformed)':'')+'.');
+    }catch(err){ window.alert('Could not import: '+err.message); }
+  };
+  rd.readAsText(f);
+  e.target.value='';
+};
 
 /* ---- 3D diver (Three.js, lazy-init when the How-it-works tab opens) ---- */
 let diverInited=false, diverAPI=null;
