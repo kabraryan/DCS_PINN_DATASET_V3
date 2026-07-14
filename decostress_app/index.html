@@ -1699,6 +1699,71 @@ function liveRisk(maxD, tNow, curDepth, tissueNow){
   return {pct:percentileOf(score), score, scalars:sc,
           requiredAscent:req.total, requiredStops:req.stop};
 }
+
+/* ================================================================
+   DIVE LOG — store layer.
+
+   Persists ONLY the polyline. Rank, obligation, loading and violation are
+   re-derived at render by predict()/simulatePolyline(). Caching them would
+   freeze them: refit the model and every saved dive would keep serving a
+   stale number, with nothing to catch it. That is Correction 10 -- a value
+   hand-copied away from its source -- and the whole repo is guarded against
+   it. The log does not get an exemption.
+   ================================================================ */
+const LOG_KEY='decostress.scenarios.v1';
+
+function logLoad(){
+  try{
+    const raw=localStorage.getItem(LOG_KEY);
+    if(!raw) return [];
+    const list=JSON.parse(raw);
+    if(!Array.isArray(list)) return [];
+    // A corrupt entry must not brick the page. Keep only well-formed records.
+    return list.filter(s=>s && typeof s.id==='string' && Array.isArray(s.poly) && s.poly.length>=2);
+  }catch(e){
+    console.warn('dive log: unreadable storage, starting empty', e);
+    return [];
+  }
+}
+function logSave(list){
+  try{ localStorage.setItem(LOG_KEY, JSON.stringify(list)); }
+  catch(e){ console.warn('dive log: could not persist', e); }
+}
+function defaultName(poly){
+  const sc=diveScalars(poly);
+  if(!sc) return 'dive';
+  return Math.round(sc.maxDepthM)+' m / '+Math.round(sc.bottom)+' min';
+}
+function logAdd(name, poly){
+  if(!Array.isArray(poly) || poly.length<2) throw new Error('a scenario needs at least two waypoints');
+  const s={
+    id:'s_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    name:String(name||'').trim() || defaultName(poly),
+    savedAt:Date.now(),
+    poly:poly.map(p=>({t:+p.t, d:+p.d}))   // inputs only -- never the derived scores
+  };
+  const list=logLoad(); list.push(s); logSave(list);
+  return s;
+}
+function logRemove(id){ logSave(logLoad().filter(s=>s.id!==id)); }
+function logExport(){ return JSON.stringify(logLoad(), null, 2); }
+function logImport(json){
+  let incoming;
+  try{ incoming=JSON.parse(json); }catch(e){ throw new Error('that file is not valid JSON'); }
+  if(!Array.isArray(incoming)) throw new Error('expected a list of scenarios');
+  const list=logLoad(), have=new Set(list.map(s=>s.id));
+  let added=0, skipped=0;
+  for(const s of incoming){
+    if(!s || typeof s.id!=='string' || !Array.isArray(s.poly) || s.poly.length<2){ skipped++; continue; }
+    if(have.has(s.id)){ skipped++; continue; }
+    list.push({id:s.id, name:String(s.name||'dive'), savedAt:+s.savedAt||Date.now(),
+               poly:s.poly.map(p=>({t:+p.t, d:+p.d}))});
+    have.add(s.id); added++;
+  }
+  logSave(list);
+  return {added, skipped};
+}
+
 function simulateHistory(poly){
   let t=HALF.map(()=>inspN2(0)); const dt=0.05; const hist=[]; let rec=-1; let mx=0;
   const rate=Math.max(1,depthRate());
