@@ -13,8 +13,10 @@ const path = require('path');
 const APP = path.join(__dirname, '..', 'decostress_app', 'index.html');
 
 function boot(storage) {
+  const ENGINE = fs.readFileSync(path.join(__dirname, '..', 'decostress_app', 'deco-engine.js'), 'utf8');
   const html = fs.readFileSync(APP, 'utf8')
-    .replace(/<script src="https:\/\/cdnjs[^>]*><\/script>/, '<script></script>');
+    .replace(/<script src="https:\/\/cdnjs[^>]*><\/script>/, '<script></script>')
+    .replace('<script src="deco-engine.js"></script>', '<script>' + ENGINE + '</script>');
   const dom = new JSDOM(html, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,

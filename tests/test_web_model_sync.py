@@ -42,6 +42,14 @@ def _html() -> str:
         return f.read()
 
 
+ENGINE = os.path.join(HERE, "..", "decostress_app", "deco-engine.js")
+
+
+def _engine() -> str:
+    with open(ENGINE) as f:
+        return f.read()
+
+
 def _js_array(name: str, text: str) -> list[float]:
     """Pull `name: [1, 2, 3]` or `const name = [...]` out of the JS."""
     m = re.search(rf"\b{name}\s*[:=]\s*\[([^\]]*)\]", text)
@@ -71,7 +79,7 @@ def test_zhl16c_table_matches_the_shared_module():
 
     This is the exact check that would have caught Correction 10.
     """
-    text = _html()
+    text = _engine()
     m = re.search(r"const ZHL\s*=\s*\[(.*?)\];", text, re.S)
     assert m, "ZHL table not found in the app"
     nums = [float(x) for x in re.findall(r"-?\d+\.\d+", m.group(1))]
@@ -81,7 +89,7 @@ def test_zhl16c_table_matches_the_shared_module():
 
 
 def test_fitted_coefficients_match_a_fresh_fit():
-    text = _html()
+    text = _engine()
     sc, clf, _, _, _ = _refit()
 
     np.testing.assert_allclose(_js_array("mean", text), sc.mean_, atol=1e-5)
@@ -95,7 +103,7 @@ def test_fitted_coefficients_match_a_fresh_fit():
 
 def test_cohort_quantiles_match_a_fresh_fit():
     """The percentile the app shows is only meaningful if these are current."""
-    text = _html()
+    text = _engine()
     _, _, scores, _, _ = _refit()
     want = np.quantile(scores, np.linspace(0.0, 1.0, 101))
     got = np.array(_js_array("RM_Q", text))
@@ -105,7 +113,7 @@ def test_cohort_quantiles_match_a_fresh_fit():
 
 def test_cohort_size_claims_match_the_data():
     """The app tells the user '1,948 real Navy dives, 305 DCS'. It had better be true."""
-    text = _html()
+    text = _engine()
     _, _, _, n, n_dcs = _refit()
     m = re.search(r"n:\s*(\d+),\s*nDcs:\s*(\d+)", text)
     assert m, "n / nDcs not found in the app's RM block"
@@ -160,7 +168,7 @@ def test_app_bottom_time_excludes_descent_like_the_training_data():
     Caught by sweeping ascent time across the obligation and noticing the deficit
     was not zero at the crossing point.
     """
-    text = _html()
+    text = _html() + _engine()
     m = re.search(r"const bottom\s*=\s*Math\.max\(([^;]+)\)", text)
     assert m, "could not find the app's bottom-time extraction"
     expr = m.group(1)
@@ -188,7 +196,7 @@ def test_violation_is_a_continuous_ceiling_audit_not_a_minutes_of_ascent_deficit
     insufficient (fast tissues off-gas before surfacing) and that the fix must
     reach every surface, not just the dial.
     """
-    text = _html()
+    text = _html() + _engine()
     # the continuous audit and its verdict must exist
     assert "auditProfile" in text, "the app must audit the whole profile, not a square approximation"
     assert "maxOverM" in text and "CEIL_TOL_M" in text, (
@@ -295,7 +303,7 @@ def test_ascent_coefficient_is_positive_so_the_obligation_guard_must_exist():
         "ascent coefficient is no longer positive -- the inversion this guard "
         "protects against may have changed; re-derive the app's safety argument"
     )
-    text = _html()
+    text = _html() + _engine()
     assert "requiredAscentMin" in text, "the app must compute the deco obligation"
     assert "violated" in text, "the app must detect a skipped obligation"
     assert "cannot score this dive" in text, (
