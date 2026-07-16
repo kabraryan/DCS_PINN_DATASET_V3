@@ -1,0 +1,228 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DecoStress — dive computer</title>
+<style>
+  :root{--bg:#05080c;--face:#0a1017;--ink:#e8f2f6;--dim:#6b8595;--line:#16242f;
+        --cyan:#37d0e0;--safe:#2fbf9e;--amber:#f2a63a;--risk:#e2574c;--mono:'IBM Plex Mono',ui-monospace,monospace}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--mono);
+       min-height:100vh;display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap;padding:32px}
+  .banner{position:fixed;top:0;left:0;right:0;background:var(--risk);color:#fff;padding:8px;text-align:center;font-size:13px;display:none;z-index:9}
+  /* ---- the watch ---- */
+  .watch{width:340px;background:linear-gradient(160deg,#0c141c,#060a0e);border:1px solid var(--line);
+         border-radius:34px;padding:26px 24px;box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.04);
+         transition:box-shadow .4s}
+  .watch.amber{box-shadow:0 0 60px rgba(242,166,58,.28),inset 0 0 60px rgba(242,166,58,.08)}
+  .watch.risk{box-shadow:0 0 70px rgba(226,87,76,.4),inset 0 0 70px rgba(226,87,76,.12)}
+  .wtop{display:flex;justify-content:space-between;align-items:baseline;color:var(--dim);font-size:11px;letter-spacing:.15em;text-transform:uppercase}
+  .wprimary{margin:14px 0 4px;display:flex;align-items:flex-end;gap:8px}
+  .wprimary .n{font-size:76px;font-weight:600;line-height:.9;letter-spacing:-.02em}
+  .wprimary .u{font-size:20px;color:var(--dim);margin-bottom:10px}
+  .wrow{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+  .cell{background:var(--face);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+  .cell .lbl{font-size:9.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+  .cell .v{font-size:26px;font-weight:600;margin-top:3px}
+  .cell .v small{font-size:13px;color:var(--dim)}
+  .arate{margin-top:16px}
+  .arate .lbl{font-size:9.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;display:flex;justify-content:space-between}
+  .arbar{height:8px;background:var(--face);border-radius:5px;margin-top:6px;overflow:hidden;position:relative}
+  .arfill{height:100%;width:0;background:var(--safe);transition:width .12s,background .12s}
+  .armark{position:absolute;top:-2px;bottom:-2px;left:50%;width:1px;background:var(--dim)}
+  .tissues{margin-top:16px}
+  .tissues .lbl{font-size:9.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;margin-bottom:7px}
+  #wTissues{display:flex;gap:3px;align-items:flex-end;height:56px}
+  .tbar{flex:1;background:var(--safe);border-radius:2px 2px 0 0;min-height:2px;transition:height .12s,background .12s}
+  .wrank{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;display:flex;justify-content:space-between;align-items:baseline}
+  .wrank .lbl{font-size:9.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;max-width:180px;line-height:1.4}
+  #wRank{font-size:30px;font-weight:700}
+  #wRank.void{color:var(--risk);font-size:20px;letter-spacing:.06em}
+  /* ---- the console ---- */
+  .console{width:520px;max-width:92vw;background:var(--face);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .console h1{font-size:15px;letter-spacing:.04em;font-weight:600}
+  .console .sub{color:var(--dim);font-size:12px;margin:6px 0 18px;line-height:1.5}
+  .ctrls{display:flex;gap:10px;align-items:center;margin-bottom:16px}
+  .ctrls button{background:#0d1a22;border:1px solid var(--line);color:var(--ink);border-radius:9px;
+                 padding:9px 15px;font-family:var(--mono);font-size:13px;cursor:pointer}
+  .ctrls button:hover{border-color:var(--cyan);color:var(--cyan)}
+  .ctrls .spd{margin-left:auto;display:flex;gap:6px}
+  .ctrls .spd button.on{border-color:var(--cyan);color:var(--cyan)}
+  #scrub{width:100%;margin:4px 0 14px;accent-color:var(--cyan)}
+  #profile{width:100%;height:200px;display:block;background:#060b0f;border:1px solid var(--line);border-radius:10px}
+  .disc{color:var(--dim);font-size:11px;margin-top:14px;line-height:1.5;border-top:1px solid var(--line);padding-top:12px}
+  .disc b{color:var(--risk)}
+  .back{position:fixed;top:14px;left:18px;color:var(--dim);font-size:12px;text-decoration:none}
+  .back:hover{color:var(--cyan)}
+</style></head><body>
+
+<a class="back" href="index.html">← back to the explorer</a>
+<div class="banner" id="banner">Engine not loaded — open this page over http:// (the local server), not as a file://</div>
+
+<div class="watch" id="watch">
+  <div class="wtop"><span>DecoStress · ZH-L16C</span><span id="wClock">0:00</span></div>
+  <div class="wprimary"><span class="n" id="wDepth">0</span><span class="u">m</span></div>
+  <div class="wrow">
+    <div class="cell"><div class="lbl" id="wNdlLbl">No-deco</div><div class="v" id="wNdl">∞</div></div>
+    <div class="cell"><div class="lbl">Ceiling</div><div class="v" id="wCeil">—</div></div>
+  </div>
+  <div class="arate">
+    <div class="lbl"><span>Ascent rate</span><span id="wRateN">0 m/min</span></div>
+    <div class="arbar"><span class="arfill" id="wRateBar"></span><span class="armark"></span></div>
+  </div>
+  <div class="tissues"><div class="lbl">Tissue loading — 16 compartments</div><div id="wTissues"></div></div>
+  <div class="wrank">
+    <div class="lbl" id="wRankLbl">DecoStress rank<br><span style="color:var(--dim)">vs 1,948 real dives</span></div>
+    <div id="wRank">—</div>
+  </div>
+</div>
+
+<div class="console">
+  <h1>Dive console</h1>
+  <p class="sub">A demo dive, played through the same Bühlmann engine as the explorer.
+     Play it, change speed, or scrub. The watch reflects the diver in real time.</p>
+  <div class="ctrls">
+    <button id="play">⏸ Pause</button>
+    <button id="restart">↺ Restart</button>
+    <div class="spd">
+      <button data-spd="1">1×</button><button data-spd="4" class="on">4×</button><button data-spd="10">10×</button>
+    </div>
+  </div>
+  <input type="range" id="scrub" min="0" max="1000" value="0">
+  <canvas id="profile" width="960" height="400"></canvas>
+  <p class="disc"><b>Not a dive planner.</b> A teaching demo of the physics, not a device to
+     make in-water decisions with. The rank is a weak ranking (AUC 0.64), shown VOID whenever
+     the dive goes over its ceiling or off the model's map.</p>
+</div>
+
+<script src="deco-engine.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+if(typeof predict!=='function'){ $('banner').style.display='block'; }
+
+/* A realistic recreational dive: descent, bottom, ascent, 5 m safety stop, surface.
+   Chosen to stay in-distribution so the rank shows a real number for most of it. */
+const DEMO=[{t:0,d:0},{t:1.4,d:28},{t:19,d:28},{t:21.4,d:9},{t:22,d:5},{t:25,d:5},{t:26,d:0}];
+window.DEMO=DEMO;   // expose for tests (top-level const is not a window prop)
+const T_END=DEMO[DEMO.length-1].t;
+const SURFACE_WATCH=8;   // minutes of post-surface off-gassing shown
+
+function polyUpTo(poly,t){
+  const out=[]; for(let i=0;i<poly.length;i++){
+    if(poly[i].t<=t) out.push(poly[i]);
+    else { const a=poly[i-1]; if(a){ const f=(t-a.t)/(poly[i].t-a.t); out.push({t, d:a.d+(poly[i].d-a.d)*f}); } break; }
+  }
+  if(!out.length) out.push({t:0,d:0});
+  return out;
+}
+function depthAt(poly,t){ const s=polyUpTo(poly,t); return s[s.length-1].d; }
+
+/* NDL and TTS from the current tissue state. NDL: forward-search how long you could
+   stay at this depth before the ceiling leaves the surface. TTS: the obligation now. */
+function ndlTtsAt(tissue,depthM){
+  const ceilFsw=ceilingFsw(tissue), ceilingM=ceilFsw/M_TO_FSW;
+  const tts=requiredAscentMin(tissue,depthM*M_TO_FSW).total;
+  let ndl=Infinity;
+  if(depthM>0.5){
+    let P=tissue.slice(); const alv=inspN2(depthM);
+    for(let m=0;m<=99;m++){
+      if(ceilingFsw(P)>0.5){ ndl=m; break; }
+      P=haldane(P,alv,1);
+    }
+    if(ndl===Infinity && ceilingFsw(P)>0.5) ndl=99;
+  }
+  return {ndl,tts,ceilingM};
+}
+
+function renderProfileAt(poly,t){
+  const s=polyUpTo(poly,t);
+  const {tissue}=simulatePolyline(s.length>=2?s:[{t:0,d:0},{t:0.01,d:0}]);
+  const depthM=depthAt(poly,t);
+  const {ndl,tts,ceilingM}=ndlTtsAt(tissue,depthM);
+
+  $('wDepth').textContent=Math.round(depthM);
+  $('wClock').textContent=Math.floor(t)+':'+String(Math.floor((t%1)*60)).padStart(2,'0');
+
+  // NDL while no obligation; TTS + ceiling once in deco
+  if(ceilingM>0.5){
+    $('wNdlLbl').textContent='TTS'; $('wNdl').innerHTML=Math.ceil(tts)+'<small> min</small>';
+    $('wCeil').textContent=Math.ceil(ceilingM)+' m';
+  }else{
+    $('wNdlLbl').textContent='No-deco';
+    $('wNdl').innerHTML = ndl===Infinity?'∞':(ndl>=99?'99+':ndl)+'<small> min</small>';
+    $('wCeil').textContent='—';
+  }
+
+  // ascent rate from the last segment near t
+  let rate=0; for(let i=1;i<s.length;i++){ const seg=s[i], a=s[i-1]; if(seg.t>t-0.2){ const dt=seg.t-a.t; if(dt>0) rate=Math.max(rate,(a.d-seg.d)/dt); } }
+  const rec=9;   // recommended max m/min
+  $('wRateN').textContent=Math.max(0,rate).toFixed(0)+' m/min';
+  const bar=$('wRateBar'); bar.style.width=Math.min(100,Math.max(0,rate)/(rec*2)*100)+'%';
+  bar.style.background=rate>rec*1.6?'var(--risk)':rate>rec?'var(--amber)':'var(--safe)';
+
+  // tissue strip
+  const box=$('wTissues');
+  if(box.children.length!==NC){ box.innerHTML=''; for(let i=0;i<NC;i++){ const b=document.createElement('div'); b.className='tbar'; box.appendChild(b);} }
+  let peak=0;
+  for(let c=0;c<NC;c++){ const ratio=tissue[c]/mSurface(c); peak=Math.max(peak,ratio);
+    const el=box.children[c]; el.style.height=Math.min(100,ratio/1.4*100)+'%';
+    el.style.background=ratio>=1.0?'var(--risk)':ratio>=0.85?'var(--amber)':'var(--safe)'; }
+
+  // face tint from peak loading
+  const w=$('watch'); w.classList.toggle('risk',peak>=1.0); w.classList.toggle('amber',peak>=0.85&&peak<1.0);
+
+  // the DecoStress rank. The model ranks COMPLETED dives, so it stays "—" until
+  // the diver has surfaced — you cannot rank a dive that is not over. Once
+  // surfaced it obeys voidVerdict, exactly like the explorer.
+  const rankEl=$('wRank'), lblEl=$('wRankLbl');
+  const surfaced = depthM<=0.5 && t>0.5;
+  const r = surfaced ? predict(s) : null;
+  if(!r){
+    rankEl.textContent='—'; rankEl.classList.remove('void');
+    lblEl.innerHTML = t<=0.5 ? 'DecoStress rank<br><span style="color:var(--dim)">vs 1,948 real dives</span>'
+                             : 'DecoStress rank<br><span style="color:var(--dim)">shown once you surface</span>';
+  }else{
+    lblEl.innerHTML='DecoStress rank<br><span style="color:var(--dim)">vs 1,948 real dives</span>';
+    const v=voidVerdict(r);
+    if(v.voided){ rankEl.textContent = r.violated?'VOID · OVER CEILING':'VOID · UNRANKABLE'; rankEl.classList.add('void'); }
+    else{ const p=Math.round(r.pct*100); const suf=['th','st','nd','rd'],vv=p%100;
+      rankEl.textContent=p+(suf[(vv-20)%10]||suf[vv]||suf[0]); rankEl.classList.remove('void'); }
+  }
+
+  drawProfile(poly,t);
+}
+function renderAt(t){ renderProfileAt(DEMO,t); }
+
+function drawProfile(poly,t){
+  const cv=$('profile'); if(!cv) return; const ctx=cv.getContext('2d'); if(!ctx) return;
+  const W=cv.width,H=cv.height,PADL=42,PADR=14,PADT=14,PADB=26;
+  ctx.clearRect(0,0,W,H);
+  const maxT=T_END+SURFACE_WATCH, maxD=Math.max(10,...poly.map(p=>p.d));
+  const X=tt=>PADL+(tt/maxT)*(W-PADL-PADR), Y=dd=>PADT+(dd/maxD)*(H-PADT-PADB);
+  ctx.strokeStyle='#16242f';ctx.fillStyle='#6b8595';ctx.font='11px monospace';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const dd=maxD*i/4;ctx.beginPath();ctx.moveTo(PADL,Y(dd));ctx.lineTo(W-PADR,Y(dd));ctx.stroke();
+    ctx.textAlign='right';ctx.fillText(Math.round(dd)+'m',PADL-5,Y(dd)+4);}
+  // full profile faint, travelled part bright
+  ctx.strokeStyle='#24404f';ctx.lineWidth=1.5;ctx.beginPath();
+  poly.forEach((p,i)=>i?ctx.lineTo(X(p.t),Y(p.d)):ctx.moveTo(X(p.t),Y(p.d)));ctx.stroke();
+  const s=polyUpTo(poly,t);
+  ctx.strokeStyle='#37d0e0';ctx.lineWidth=2.4;ctx.beginPath();
+  s.forEach((p,i)=>i?ctx.lineTo(X(p.t),Y(p.d)):ctx.moveTo(X(p.t),Y(p.d)));ctx.stroke();
+  const dNow=depthAt(poly,t);
+  ctx.fillStyle='#37d0e0';ctx.beginPath();ctx.arc(X(t),Y(dNow),4,0,7);ctx.fill();
+}
+
+/* ---- playback clock ---- */
+let playing=true, speed=4, simT=0, lastMs=null;
+function frame(ms){
+  if(lastMs==null) lastMs=ms; const dt=(ms-lastMs)/1000; lastMs=ms;
+  if(playing){ simT+=dt*speed*0.5; if(simT>T_END+SURFACE_WATCH){ simT=0; } $('scrub').value=Math.round(simT/(T_END+SURFACE_WATCH)*1000); }
+  if(typeof predict==='function') renderAt(simT);
+  requestAnimationFrame(frame);
+}
+$('play').onclick=()=>{ playing=!playing; $('play').textContent=playing?'⏸ Pause':'▶ Play'; lastMs=null; };
+$('restart').onclick=()=>{ simT=0; lastMs=null; };
+document.querySelectorAll('.spd button').forEach(b=>b.onclick=()=>{
+  speed=+b.dataset.spd; document.querySelectorAll('.spd button').forEach(x=>x.classList.toggle('on',x===b)); });
+$('scrub').oninput=e=>{ playing=false; $('play').textContent='▶ Play'; simT=(+e.target.value/1000)*(T_END+SURFACE_WATCH); if(typeof predict==='function') renderAt(simT); };
+
+if(typeof predict==='function') requestAnimationFrame(frame);
+</script></body></html>

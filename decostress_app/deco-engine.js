@@ -246,7 +246,7 @@ function auditProfile(poly){
   const real=walkAudit(poly);
   const square=walkAudit(squareFromScalars(sc));
   const inDistribution = Math.abs(real.maxOverM - square.maxOverM) < 0.15
-                      && Math.abs(real.finalLoad - square.finalLoad) < 0.03;
+                      && Math.abs(real.finalLoad - square.finalLoad) < 0.08;
   /* Violation is ONE physical predicate: were you ever more than CEIL_TOL_M
      above your ceiling on the real trajectory. A dive that surfaces bent was
      necessarily over its ceiling near the surface, so this catches surface-bent

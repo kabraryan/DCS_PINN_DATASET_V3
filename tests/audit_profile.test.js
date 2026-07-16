@@ -62,6 +62,11 @@ const LEGIT = {
   'rec 18m/40min + safety stop': [{t:0,d:0},{t:1.5,d:18},{t:40,d:18},{t:43,d:5},{t:46,d:5},{t:47,d:0}],
   'square 40m/8min bounce': sq(40, 8, 2),
   'shallow 12m/60min': sq(12, 60, 3),
+  // A deeper rec dive WITH a safety stop: the stop off-gasses more than a linear
+  // ascent, so its square reconstruction disagrees by ~0.04 load. That is a
+  // genuine square dive (Simplicity measured such dives at 0.03-0.08), NOT out of
+  // distribution — a safety stop must not make a dive unrankable.
+  '28m/18min + 5m safety stop': [{t:0,d:0},{t:1.4,d:28},{t:19,d:28},{t:21.4,d:9},{t:22,d:5},{t:25,d:5},{t:26,d:0}],
 };
 
 setTimeout(() => {
