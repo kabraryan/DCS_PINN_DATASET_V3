@@ -317,3 +317,25 @@ def test_ascent_coefficient_is_positive_so_the_obligation_guard_must_exist():
         f"the app feeds `{m.group(1)}` as ascent; it MUST feed the required "
         "obligation, or the model inverts and rewards skipping the safety stop"
     )
+
+
+def test_dive_computer_page_uses_the_shared_engine_not_a_copy():
+    """The new page must LOAD deco-engine.js, never re-declare the physics.
+
+    A second inline copy of the engine is the Correction 10 failure mode. The
+    page is allowed to read predict()/simulatePolyline()/voidVerdict(); it must
+    not define ZHL, RM, or predict itself.
+    """
+    page_path = os.path.join(HERE, "..", "decostress_app", "divecomputer.html")
+    with open(page_path) as f:
+        page = f.read()
+    assert '<script src="deco-engine.js">' in page, "the page must load the shared engine"
+    assert "const ZHL" not in page and "const RM " not in page and "const RM_Q" not in page, (
+        "the page must not re-declare the fitted constants -- that is a second "
+        "copy that can drift from the source"
+    )
+    assert "function predict(" not in page and "function auditProfile(" not in page, (
+        "the page must call the engine's predict(), not define its own"
+    )
+    # the rank on the watch must obey voidVerdict, not print a raw percentile
+    assert "voidVerdict(" in page, "the watch rank must run through voidVerdict"
